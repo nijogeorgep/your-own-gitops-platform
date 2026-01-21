@@ -10,7 +10,7 @@
     Name of the Helm release to uninstall (default: nginx)
 
 .PARAMETER Namespace
-    Kubernetes namespace (default: default)
+    Kubernetes namespace (if not specified, defaults to 'default')
 
 .PARAMETER KeepHistory
     Keep release history for rollback

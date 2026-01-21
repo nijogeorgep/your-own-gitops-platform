@@ -1,0 +1,119 @@
+# Example: Custom Namespace with Resource Governance
+# This example shows how to create and customize a namespace with resource quotas and limits
+
+# Naming
+nameOverride: "myapp"
+environment: "prod"
+region: "us-east-1"
+
+# Create custom namespace with governance
+namespace:
+  # Enable namespace creation
+  create: true
+  
+  # Custom namespace name (optional - defaults to Release.Namespace)
+  # name: "myapp-production"
+  
+  # Custom labels for the namespace
+  labels:
+    environment: production
+    team: platform-engineering
+    cost-center: eng-001
+    compliance: pci-dss
+  
+  # Annotations for documentation and tooling
+  annotations:
+    owner: "platform-team@example.com"
+    description: "Production workloads for MyApp"
+    slack-channel: "#myapp-alerts"
+    runbook: "https://wiki.example.com/runbooks/myapp"
+  
+  # ResourceQuota - prevent resource exhaustion
+  resourceQuota:
+    enabled: true
+    hard:
+      # CPU quotas
+      requests.cpu: "10"      # Max 10 CPU cores requested
+      limits.cpu: "20"        # Max 20 CPU cores limit
+      
+      # Memory quotas
+      requests.memory: "20Gi" # Max 20GB memory requested
+      limits.memory: "40Gi"   # Max 40GB memory limit
+      
+      # Object count quotas
+      pods: "50"                        # Max 50 pods
+      services: "10"                    # Max 10 services
+      services.loadbalancers: "2"       # Max 2 LoadBalancer services
+      persistentvolumeclaims: "10"      # Max 10 PVCs
+      configmaps: "20"                  # Max 20 ConfigMaps
+      secrets: "20"                     # Max 20 Secrets
+  
+  # LimitRange - default resource limits for safety
+  limitRange:
+    enabled: true
+    limits:
+      # Container-level limits
+      - type: Container
+        # Default limits (if not specified in pod spec)
+        default:
+          cpu: 500m
+          memory: 512Mi
+        # Default requests (if not specified)
+        defaultRequest:
+          cpu: 100m
+          memory: 128Mi
+        # Maximum allowed
+        max:
+          cpu: 2000m
+          memory: 2Gi
+        # Minimum required
+        min:
+          cpu: 50m
+          memory: 64Mi
+      
+      # Pod-level limits (sum of all containers)
+      - type: Pod
+        max:
+          cpu: 4000m
+          memory: 4Gi
+
+# Application configuration
+replicaCount: 3
+
+image:
+  repository: myregistry/myapp
+  tag: "v1.2.3"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 80
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+livenessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 5
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80

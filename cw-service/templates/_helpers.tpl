@@ -49,6 +49,14 @@ app.kubernetes.io/name: {{ include "cw-service.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
+{{/*
+Namespace helper - returns the target namespace
+Uses .Release.Namespace by default, or custom namespace if defined
+*/}}
+{{- define "cw-service.namespace" -}}
+{{- default .Release.Namespace .Values.namespace.name }}
+{{- end }}
+
 {{- define "cw-service.serviceAccountName" -}}
 {{- default (include "cw-service.fullname" .) .Values.serviceAccount.name }}
 {{- end }}

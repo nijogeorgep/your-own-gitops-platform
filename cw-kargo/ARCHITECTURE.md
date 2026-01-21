@@ -4,7 +4,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                    GitOps Platform (100+ Services)                   │
+│                    GitOps Platform (100+ Services)                  │
 └─────────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
@@ -27,12 +27,12 @@
 └────────────────┘   └────────────────┘   └────────────────┘
         ↕                     ↕                     ↕
 ┌────────────────────────────────────────────────────────┐
-│              Git Repository (services/*)                │
+│              Git Repository (services/*)               │
 │  • nginx/values-dev.yaml                               │
 │  • nginx/values-staging.yaml                           │
 │  • nginx/values-prod.yaml                              │
 │  • api-gw/values-dev.yaml                              │
-│  • ...                                                  │
+│  • ...                                                 │
 └────────────────────────────────────────────────────────┘
 ```
 
@@ -128,7 +128,7 @@
        ▼
 ┌──────────────────────────────────────────────────────────┐
 │  ArgoCD Application: nginx-prod (manual sync)            │
-│  kubectl argo app sync nginx-prod -n argocd             │
+│  kubectl argo app sync nginx-prod -n argocd              │
 │  - Syncs to Kubernetes                                   │
 │  - Deploys nginx:abc123 to prod namespace                │
 └──────────────────────────────────────────────────────────┘
@@ -138,7 +138,7 @@
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    Kubernetes Cluster                    │
+│                    Kubernetes Cluster                   │
 └─────────────────────────────────────────────────────────┘
          │
          ├─────────────────────────────────────────────┐
@@ -156,13 +156,13 @@
 │ namespace          │                      │ namespace          │
 │                    │                      │                    │
 │ Permissions:       │                      │ Permissions:       │
-│ ✓ Full access      │                      │ ✓ Full access      │
-│ ✓ Promote stages   │                      │ ✓ Promote stages   │
-│ ✓ View freight     │                      │ ✓ View freight     │
-│ ✓ View promotions  │                      │ ✓ View promotions  │
+│ ✓ Full access      │                      │ ✓ Full access     │
+│ ✓ Promote stages   │                      │ ✓ Promote stages  │
+│ ✓ View freight     │                      │ ✓ View freight    │
+│ ✓ View promotions  │                      │ ✓ View promotions │
 │                    │                      │                    │
 │ Restrictions:      │                      │ Restrictions:      │
-│ ✗ No access to     │                      │ ✗ No access to     │
+│ ✗ No access to     │                      │ ✗ No access to    │
 │   kargo-api-gw     │                      │   kargo-nginx      │
 └────────────────────┘                      └────────────────────┘
 
@@ -177,14 +177,14 @@ Benefits:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│               Single Shared Namespace (❌)               │
+│               Single Shared Namespace (❌)              │
 │              kargo-all-services                         │
 ├─────────────────────────────────────────────────────────┤
 │  • 1000 Warehouses                                      │
 │  • 3000 Stages                                          │
 │  • 10,000+ Promotions (accumulated)                     │
 │  • 1000+ Freight objects                                │
-│                                                          │
+│                                                         │
 │  Problems:                                              │
 │  ⚠ etcd performance degradation                         │
 │  ⚠ Slow kubectl get operations                          │
@@ -196,14 +196,14 @@ Benefits:
 VS
 
 ┌─────────────────────────────────────────────────────────┐
-│          Distributed Namespaces (✅)                     │
+│          Distributed Namespaces (✅)                    │
 │    1000 namespaces × 5 resources each                   │
 ├─────────────────────────────────────────────────────────┤
 │  kargo-nginx:          1 Warehouse, 3 Stages, Freight   │
 │  kargo-api-gw:         1 Warehouse, 3 Stages, Freight   │
 │  kargo-auth:           1 Warehouse, 3 Stages, Freight   │
-│  ... (997 more)                                          │
-│                                                          │
+│  ... (997 more)                                         │
+│                                                         │
 │  Benefits:                                              │
 │  ✓ Fast kubectl operations (scoped to namespace)        │
 │  ✓ Kargo UI responsive (loads 5 resources per view)     │

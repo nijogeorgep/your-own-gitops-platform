@@ -25,8 +25,8 @@
 .PARAMETER SkipKargo
     Skip Kargo installation
 
-.PARAMETER SkipHeadlamp
-    Skip Headlamp installation
+.PARAMETER SkipDashboard
+    Skip Kubernetes Dashboard installation
 
 .PARAMETER SkipCertManager
     Skip cert-manager installation
@@ -40,14 +40,14 @@
     # Install without Istio
 
 .EXAMPLE
-    .\install-all.ps1 -Email admin@example.com -SkipHeadlamp
-    # Install without Headlamp UI
+    .\install-all.ps1 -Email admin@example.com -SkipDashboard
+    # Install without Kubernetes Dashboard UI
 #>
 
 param(
     [string]$Email = "",
     [switch]$SkipIstio,
-    [switch]$SkipHeadlamp,
+    [switch]$SkipDashboard,
     [switch]$SkipArgoCD,
     [switch]$SkipRollouts,
     [switch]$SkipEvents,
@@ -190,20 +190,20 @@ if (-not $SkipKargo) {
     }
     Write-Host ""
 }
-7. Headlamp (Kubernetes UI)
-if (-not $SkipHeadlamp) {
-    Write-Host "Step 7: Installing Headlamp..." -ForegroundColor Cyan
+# 7. Kubernetes Dashboard (Kubernetes UI)
+if (-not $SkipDashboard) {
+    Write-Host "Step 7: Installing Kubernetes Dashboard..." -ForegroundColor Cyan
     Write-Host "======================================" -ForegroundColor Cyan
     try {
-        & "$ScriptDir\install-headlamp.ps1"
+        & "$ScriptDir\install-kubernetes-dashboard.ps1"
         if ($LASTEXITCODE -eq 0) {
-            $Installed += "Headlamp"
+            $Installed += "Kubernetes Dashboard"
         } else {
-            $Failed += "Headlamp"
+            $Failed += "Kubernetes Dashboard"
         }
     } catch {
-        Write-Error "Headlamp installation failed: $_"
-        $Failed += "Headlamp"
+        Write-Error "Kubernetes Dashboard installation failed: $_"
+        $Failed += "Kubernetes Dashboard"
     }
     Write-Host ""
 }
@@ -219,7 +219,7 @@ Write-Host ""|headlamp"
 Write-Host ""
 Write-Host "Next steps:" -ForegroundColor Cyan
 Write-Host "  1. Access ArgoCD UI and change default password" -ForegroundColor White
-Write-Host "  2. Access Headlamp UI for cluster management" -ForegroundColor White
+Write-Host "  2. Access Kubernetes Dashboard for cluster management" -ForegroundColor White
 Write-Host "  3. Configure Istio ingress gateway" -ForegroundColor White
 Write-Host "  4. Create ArgoCD applications for your services" -ForegroundColor White
 Write-Host "  5. Set up Kargo projects and promotion workflows" -ForegroundColor White

@@ -1,0 +1,12 @@
+{{- if and .Values.namespace.create .Values.namespace.limitRange.enabled -}}
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: {{ include "cw-service.namespace" . }}-limits
+  namespace: {{ include "cw-service.namespace" . }}
+  labels:
+    {{- include "cw-service.labels" . | nindent 4 }}
+spec:
+  limits:
+    {{- toYaml .Values.namespace.limitRange.limits | nindent 4 }}
+{{- end }}

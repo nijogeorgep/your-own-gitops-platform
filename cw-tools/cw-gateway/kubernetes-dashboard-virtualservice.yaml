@@ -1,0 +1,30 @@
+# Kubernetes Dashboard VirtualService - Expose Dashboard UI at /dashboard path
+
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: kubernetes-dashboard
+  namespace: kubernetes-dashboard
+  labels:
+    app: kubernetes-dashboard
+    component: ui
+spec:
+  hosts:
+  - "*"
+  gateways:
+  - istio-system/platform-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /dashboard
+    rewrite:
+      uri: /
+    route:
+    - destination:
+        host: kubernetes-dashboard-kong-proxy.kubernetes-dashboard.svc.cluster.local
+        port:
+          number: 443
+    headers:
+      request:
+        set:
+          X-Forwarded-Proto: https

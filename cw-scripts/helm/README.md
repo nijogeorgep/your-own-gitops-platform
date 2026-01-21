@@ -6,11 +6,16 @@ Scripts for deploying and managing applications using the `cw-service` Helm char
 
 ### Install Nginx (Development)
 ```powershell
+# Automatically deploys to 'dev' namespace (detected from environment: dev in values file)
 .\install.ps1
 ```
 
 ### Install Nginx (Production)
 ```powershell
+# Automatically deploys to 'prod' namespace (detected from environment: prod in values file)
+.\install.ps1 -ReleaseName nginx-prod -ValuesFile nginx-prod-values.yaml
+
+# Or explicitly specify namespace
 .\install.ps1 -ReleaseName nginx-prod -ValuesFile nginx-prod-values.yaml -Namespace production
 ```
 
@@ -32,8 +37,17 @@ Installs the cw-service chart with specified configuration.
 **Parameters:**
 - `ReleaseName` - Helm release name (default: nginx)
 - `ValuesFile` - Values file to use (default: nginx-dev-values.yaml)
-- `Namespace` - Target namespace (default: default)
+- `Namespace` - Target namespace (auto-detected from `environment` value in values file, fallback: default)
 - `DryRun` - Validate without installing
+
+**Namespace Auto-Detection:**
+The script automatically reads the `environment` field from your values file:
+- `environment: dev` → deploys to `dev` namespace
+- `environment: staging` → deploys to `staging` namespace  
+- `environment: prod` → deploys to `prod` namespace
+- No environment specified → defaults to `default` namespace
+
+Override by explicitly passing `-Namespace <name>`
 
 **Examples:**
 ```powershell
@@ -53,7 +67,7 @@ Upgrades an existing release with new values or chart version.
 **Parameters:**
 - `ReleaseName` - Helm release name (default: nginx)
 - `ValuesFile` - Values file to use (default: nginx-dev-values.yaml)
-- `Namespace` - Target namespace (default: default)
+- `Namespace` - Target namespace (auto-detected from `environment` value, fallback: default)
 - `Install` - Install if release doesn't exist
 - `DryRun` - Preview changes without applying
 

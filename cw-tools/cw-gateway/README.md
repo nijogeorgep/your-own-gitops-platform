@@ -5,7 +5,7 @@ Istio Gateway and VirtualServices for exposing platform UIs through a single Loa
 ## Components Exposed
 
 - **ArgoCD**: `/argocd` - GitOps continuous delivery UI
-- **Headlamp**: `/headlamp` - Kubernetes cluster management UI
+- **Kubernetes Dashboard**: `/dashboard` - Official Kubernetes cluster management UI
 - **Kargo**: `/kargo` - Promotion workflow UI
 - **Argo Rollouts**: `/rollouts` - Progressive delivery dashboard
 
@@ -40,7 +40,7 @@ Istio Gateway and VirtualServices for exposing platform UIs through a single Loa
 kubectl port-forward -n istio-ingress svc/istio-ingress 8080:80
 ```
 
-Then access via `http://localhost:8080/argocd`, `/headlamp`, `/rollouts`
+Then access via `http://localhost:8080/argocd`, `/dashboard`, `/rollouts`
 
 ### For Cloud Clusters (EKS, GKE, AKS)
 ```powershell

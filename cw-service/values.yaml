@@ -26,6 +26,60 @@ environment: ""  # e.g., dev, staging, prod
 flavor: ""       # e.g., api, worker, cache (OPTIONAL - use for service variants)
 region: ""       # e.g., us-east-1, eu-west-1, apse-1
 
+# Namespace configuration
+# Allows creating and customizing the namespace where resources are deployed
+namespace:
+  # Whether to create the namespace (if false, namespace must exist)
+  create: false
+  # Custom namespace name (if not set, uses Release.Namespace)
+  name: ""
+  # Additional labels for the namespace
+  labels: {}
+    # environment: production
+    # team: platform
+    # cost-center: engineering
+  # Annotations for the namespace
+  annotations: {}
+    # owner: platform-team@example.com
+    # description: "Production workloads"
+  
+  # ResourceQuota - limit total resource consumption in namespace
+  # https://kubernetes.io/docs/concepts/policy/resource-quotas/
+  resourceQuota:
+    enabled: false
+    hard: {}
+      # requests.cpu: "10"
+      # requests.memory: 20Gi
+      # limits.cpu: "20"
+      # limits.memory: 40Gi
+      # pods: "50"
+      # services: "10"
+      # persistentvolumeclaims: "5"
+    scopeSelector: {}
+  
+  # LimitRange - default resource limits for containers
+  # https://kubernetes.io/docs/concepts/policy/limit-range/
+  limitRange:
+    enabled: false
+    limits: []
+      # - type: Container
+      #   default:
+      #     cpu: 500m
+      #     memory: 512Mi
+      #   defaultRequest:
+      #     cpu: 100m
+      #     memory: 128Mi
+      #   max:
+      #     cpu: 2000m
+      #     memory: 2Gi
+      #   min:
+      #     cpu: 50m
+      #     memory: 64Mi
+      # - type: Pod
+      #   max:
+      #     cpu: 4000m
+      #     memory: 4Gi
+
 # This section builds out the service account more information can be found here: https://kubernetes.io/docs/concepts/security/service-accounts/
 # ServiceAccount is always created as a default requirement for security best practices
 serviceAccount:

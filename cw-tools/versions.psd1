@@ -25,7 +25,7 @@
     Kyverno = "3.1.4"  # Helm chart version
     
     # Kubernetes UI
-    Headlamp = "0.28.1"  # Helm chart version
+    KubernetesDashboard = "7.11.0"  # Helm chart version
     
     # Helm Repositories
     Repositories = @{
@@ -33,6 +33,6 @@
         Istio = "https://istio-release.storage.googleapis.com/charts"
         Argo = "https://argoproj.github.io/argo-helm"
         KargoOCI = "oci://ghcr.io/akuity/kargo-charts/kargo"
-        Headlamp = "https://kubernetes-sigs.github.io/headlamp/"
+        KubernetesDashboard = "https://kubernetes.github.io/dashboard/"
     }
 }

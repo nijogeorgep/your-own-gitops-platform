@@ -34,7 +34,7 @@
 param(
     [string]$ReleaseName = "nginx",
     [string]$ValuesFile = "nginx-dev-values.yaml",
-    [string]$Namespace = "default",
+    [string]$Namespace = "",  # Auto-detect from environment value if not specified
     [switch]$DryRun
 )
 
@@ -55,6 +55,19 @@ if (-not (Test-Path $ChartPath)) {
 if (-not (Test-Path $ValuesPath)) {
     Write-Error "Values file not found at: $ValuesPath"
     exit 1
+}
+
+# Auto-detect namespace from environment value if not specified
+if ([string]::IsNullOrEmpty($Namespace)) {
+    Write-Host "Auto-detecting namespace from environment value..." -ForegroundColor Gray
+    $envMatch = Select-String -Path $ValuesPath -Pattern '^\s*environment:\s*["\']?(\w+)["\']?' -AllMatches
+    if ($envMatch) {
+        $Namespace = $envMatch.Matches[0].Groups[1].Value
+        Write-Host "Detected namespace: $Namespace" -ForegroundColor Green
+    } else {
+        $Namespace = "default"
+        Write-Host "No environment found, using default namespace" -ForegroundColor Yellow
+    }
 }
 
 Write-Host "==================================================" -ForegroundColor Cyan

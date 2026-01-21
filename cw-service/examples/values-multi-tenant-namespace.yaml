@@ -1,0 +1,67 @@
+# Example: Multi-tenant Namespace Setup
+# Use case: Multiple services sharing one namespace, each with resource isolation
+
+# Naming
+nameOverride: "shared-services"
+environment: "prod"
+region: "us-east-1"
+
+# Create shared namespace with strict quotas
+namespace:
+  create: true
+  name: "shared-prod-services"
+  
+  labels:
+    environment: production
+    tenant: shared
+    isolation: multi-tenant
+  
+  annotations:
+    owner: "platform-team@example.com"
+    tenant-policy: "fair-share"
+    description: "Shared namespace for multiple production services"
+  
+  # Strict quotas to prevent any single app from consuming all resources
+  resourceQuota:
+    enabled: true
+    hard:
+      requests.cpu: "50"        # Total 50 CPUs for all services
+      limits.cpu: "100"
+      requests.memory: "100Gi"  # Total 100GB for all services
+      limits.memory: "200Gi"
+      pods: "200"               # Max 200 pods total
+      services: "50"
+      persistentvolumeclaims: "50"
+  
+  # Conservative defaults to prevent resource hogging
+  limitRange:
+    enabled: true
+    limits:
+      - type: Container
+        default:
+          cpu: 200m    # Small default
+          memory: 256Mi
+        defaultRequest:
+          cpu: 50m
+          memory: 64Mi
+        max:
+          cpu: 1000m   # Cap individual containers
+          memory: 1Gi
+        min:
+          cpu: 10m
+          memory: 32Mi
+      - type: Pod
+        max:
+          cpu: 2000m   # Cap individual pods
+          memory: 2Gi
+
+# This service's allocation within the shared namespace
+replicaCount: 2
+
+resources:
+  limits:
+    cpu: 200m      # Respectful of shared resources
+    memory: 256Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi

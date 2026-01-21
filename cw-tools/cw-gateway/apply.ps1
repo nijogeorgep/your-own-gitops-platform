@@ -42,7 +42,7 @@ Write-Host "Creating VirtualServices..." -ForegroundColor Green
 # Apply VirtualServices for installed components
 $Components = @(
     @{Name="ArgoCD"; Namespace="argocd"; File="argocd-virtualservice.yaml"},
-    @{Name="Headlamp"; Namespace="headlamp"; File="headlamp-virtualservice.yaml"},
+    @{Name="Kubernetes Dashboard"; Namespace="kubernetes-dashboard"; File="kubernetes-dashboard-virtualservice.yaml"},
     @{Name="Kargo"; Namespace="kargo"; File="kargo-virtualservice.yaml"},
     @{Name="Argo Rollouts"; Namespace="argo-rollouts"; File="rollouts-virtualservice.yaml"}
 )
@@ -108,10 +108,10 @@ if ($externalIP) {
     Write-Host "  kubectl port-forward -n istio-ingress svc/istio-ingress 8080:80" -ForegroundColor White
     Write-Host ""
     Write-Host "Then access via:" -ForegroundColor Cyan
-    Write-Host "  ArgoCD:   http://localhost:8080/argocd" -ForegroundColor White
-    Write-Host "  Headlamp: http://localhost:8080/headlamp" -ForegroundColor White
-    Write-Host "  Kargo:    http://localhost:8080/kargo" -ForegroundColor White
-    Write-Host "  Rollouts: http://localhost:8080/rollouts" -ForegroundColor White
+    Write-Host "  ArgoCD:              http://localhost:8080/argocd" -ForegroundColor White
+    Write-Host "  Kubernetes Dashboard: http://localhost:8080/dashboard" -ForegroundColor White
+    Write-Host "  Kargo:               http://localhost:8080/kargo" -ForegroundColor White
+    Write-Host "  Rollouts:            http://localhost:8080/rollouts" -ForegroundColor White
 }
 
 Write-Host ""

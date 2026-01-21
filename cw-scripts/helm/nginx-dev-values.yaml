@@ -7,6 +7,24 @@ environment: "dev"
 region: "us-east-1"
 # flavor: ""  # Optional - omit for standard deployment
 
+# Namespace configuration (optional)
+# Enable namespace.create: true to manage namespace via Helm
+# This creates a namespace with custom labels, quotas, and limits
+namespace:
+  create: false  # Set to true to create namespace with this release
+  # Uncomment to enable namespace governance:
+  # labels:
+  #   environment: development
+  #   team: platform
+  # resourceQuota:
+  #   enabled: true
+  #   hard:
+  #     requests.cpu: "4"
+  #     requests.memory: 8Gi
+  #     limits.cpu: "8"
+  #     limits.memory: 16Gi
+  #     pods: "20"
+
 # Deployment configuration
 replicaCount: 2
 
