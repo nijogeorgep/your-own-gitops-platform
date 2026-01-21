@@ -1,0 +1,59 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-labels
+  labels:
+    policy.kyverno.io/severity: medium
+    policy.kyverno.io/category: best-practices
+  annotations:
+    policies.kyverno.io/title: Require Platform Labels
+    policies.kyverno.io/description: >-
+      Enforces platform naming standards by requiring specific labels on all resources.
+      Ensures consistency across deployments for observability and governance.
+spec:
+  validationFailureAction: Audit  # Start in Audit mode
+  background: true
+  rules:
+  - name: require-app-name
+    match:
+      any:
+      - resources:
+          kinds:
+          - Deployment
+          - Rollout
+          - Service
+          - ConfigMap
+    validate:
+      message: "Label 'app.kubernetes.io/name' is required"
+      pattern:
+        metadata:
+          labels:
+            app.kubernetes.io/name: "?*"
+  
+  - name: require-environment
+    match:
+      any:
+      - resources:
+          kinds:
+          - Deployment
+          - Rollout
+    validate:
+      message: "Label 'environment' is required (must be dev, staging, or prod)"
+      pattern:
+        metadata:
+          labels:
+            environment: "dev|staging|prod"
+  
+  - name: require-region
+    match:
+      any:
+      - resources:
+          kinds:
+          - Deployment
+          - Rollout
+    validate:
+      message: "Label 'region' is required"
+      pattern:
+        metadata:
+          labels:
+            region: "?*"

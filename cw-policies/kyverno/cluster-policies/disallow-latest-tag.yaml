@@ -1,0 +1,58 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-latest-tag
+  labels:
+    policy.kyverno.io/severity: high
+    policy.kyverno.io/category: best-practices
+  annotations:
+    policies.kyverno.io/title: Disallow Latest Image Tag
+    policies.kyverno.io/description: >-
+      Prevents use of 'latest' image tag in staging and production environments.
+      Latest tags are unpredictable and prevent reliable rollbacks.
+      Allowed in dev for rapid iteration.
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+  - name: disallow-latest-in-staging
+    match:
+      any:
+      - resources:
+          kinds:
+          - Deployment
+          - Rollout
+          - Pod
+          namespaces:
+          - staging
+    validate:
+      message: "Image tag 'latest' is not allowed in staging environment. Use specific version tags."
+      pattern:
+        spec:
+          =(ephemeralContainers):
+          - image: "!*:latest"
+          =(initContainers):
+          - image: "!*:latest"
+          containers:
+          - image: "!*:latest"
+  
+  - name: disallow-latest-in-prod
+    match:
+      any:
+      - resources:
+          kinds:
+          - Deployment
+          - Rollout
+          - Pod
+          namespaces:
+          - prod
+    validate:
+      message: "Image tag 'latest' is not allowed in production environment. Use specific version tags."
+      pattern:
+        spec:
+          =(ephemeralContainers):
+          - image: "!*:latest"
+          =(initContainers):
+          - image: "!*:latest"
+          containers:
+          - image: "!*:latest"

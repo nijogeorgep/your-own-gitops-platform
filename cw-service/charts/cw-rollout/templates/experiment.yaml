@@ -1,0 +1,49 @@
+{{/*
+=============================================================================
+EXPERIMENT: A/B Testing
+=============================================================================
+Purpose: Run A/B tests during rollout for controlled experiments
+Use Case: Compare two versions with real traffic for feature validation
+*/}}
+{{- if and .Values.enabled .Values.experiments.enabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: Experiment
+metadata:
+  name: {{ include "cw-rollout.fullname" . }}-experiment
+  labels:
+    {{- include "cw-rollout.labels" . | nindent 4 }}
+spec:
+  duration: {{ .Values.experiments.duration }}
+  
+  templates:
+  {{- range .Values.experiments.templates }}
+  - name: {{ .name }}
+    replicas: {{ .replicas | default 1 }}
+    selector:
+      matchLabels:
+        {{- include "cw-rollout.selectorLabels" $ | nindent 8 }}
+        experiment-version: {{ .name }}
+    template:
+      metadata:
+        labels:
+          {{- include "cw-rollout.labels" $ | nindent 10 }}
+          experiment-version: {{ .name }}
+      spec:
+        {{- with $.Values.imagePullSecrets }}
+        imagePullSecrets:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
+        containers:
+        - name: {{ $.Chart.Name }}
+          image: "{{ .image }}"
+          {{- with .resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+  {{- end }}
+  
+  {{- with .Values.experiments.analysis }}
+  analyses:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}

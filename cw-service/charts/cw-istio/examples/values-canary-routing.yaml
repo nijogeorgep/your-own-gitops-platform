@@ -1,0 +1,109 @@
+# Example: Istio Canary Traffic Splitting (without Argo Rollouts)
+# Manual traffic splitting using VirtualService weighted routing
+# File: services/myapp/values-prod.yaml
+
+# ================================================
+# STANDARD SERVICE CONFIGURATION
+# ================================================
+environment: prod
+region: us-east-1
+
+replicaCount: 3
+
+image:
+  repository: myregistry/myapp
+  pullPolicy: IfNotPresent
+  tag: "v2.0.0"  # New version
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+# ================================================
+# ISTIO CANARY TRAFFIC SPLITTING
+# ================================================
+cw-istio:
+  enabled: true
+  
+  # VirtualService with weighted routing
+  virtualService:
+    enabled: true
+    hosts:
+      - "myapp.example.com"
+    gateways:
+      - "istio-system/platform-gateway"
+    
+    http:
+      - match:
+          - uri:
+              prefix: "/api"
+        route:
+          # 90% traffic to stable version (v1)
+          - destination:
+              port: 80
+              subset: stable
+            weight: 90
+          
+          # 10% traffic to canary version (v2)
+          - destination:
+              port: 80
+              subset: canary
+            weight: 10
+        
+        timeout: 30s
+        retries:
+          attempts: 3
+          perTryTimeout: 10s
+  
+  # DestinationRule with version subsets
+  destinationRule:
+    enabled: true
+    
+    trafficPolicy:
+      loadBalancer:
+        simple: ROUND_ROBIN
+      connectionPool:
+        tcp:
+          maxConnections: 100
+        http:
+          http1MaxPendingRequests: 50
+          http2MaxRequests: 100
+      outlierDetection:
+        consecutiveErrors: 5
+        interval: 30s
+        baseEjectionTime: 30s
+    
+    # Define subsets for canary routing
+    subsets:
+      - name: stable
+        labels:
+          version: v1  # Matches pods with version=v1 label
+        trafficPolicy:
+          loadBalancer:
+            simple: ROUND_ROBIN
+      
+      - name: canary
+        labels:
+          version: v2  # Matches pods with version=v2 label
+        trafficPolicy:
+          loadBalancer:
+            simple: ROUND_ROBIN
+
+# ================================================
+# POD LABELS (for subset matching)
+# ================================================
+podLabels:
+  version: v2  # This pod is canary version
+
+# ================================================
+# NOTES
+# ================================================
+# To adjust traffic weights, update the VirtualService weights:
+# - 0/100: All traffic to stable (v1)
+# - 10/90: 10% canary test
+# - 25/75: Increase canary
+# - 50/50: Half and half
+# - 100/0: Full promotion to canary
+#
+# For automated progressive delivery, use cw-rollout subchart instead

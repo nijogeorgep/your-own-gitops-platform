@@ -1,0 +1,61 @@
+# Example: Production deployment with Istio enabled
+nameOverride: "myapp"
+environment: "prod"
+region: "us-east-1"
+
+replicaCount: 3
+
+image:
+  repository: myapp
+  tag: "v1.0.0"
+
+service:
+  port: 8080
+
+# Enable Istio service mesh
+cw-istio:
+  enabled: true
+  
+  # VirtualService for routing
+  virtualService:
+    enabled: true
+    hosts:
+      - "myapp.example.com"
+    gateways:
+      - "istio-system/main-gateway"
+    http:
+      - match:
+        - uri:
+            prefix: "/api"
+        route:
+          - destination:
+              port: 8080
+            weight: 100
+        timeout: 30s
+        retries:
+          attempts: 3
+          perTryTimeout: 10s
+  
+  # DestinationRule for resilience
+  destinationRule:
+    enabled: true
+    trafficPolicy:
+      loadBalancer:
+        consistentHash:
+          httpHeaderName: "x-user-id"
+      connectionPool:
+        tcp:
+          maxConnections: 100
+        http:
+          http1MaxPendingRequests: 50
+          http2MaxRequests: 100
+      outlierDetection:
+        consecutiveErrors: 5
+        interval: 30s
+        baseEjectionTime: 30s
+  
+  # mTLS enforcement
+  peerAuthentication:
+    enabled: true
+    mtlsMode: STRICT
+

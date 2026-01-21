@@ -1,0 +1,3 @@
+# cw-common library chart
+# This chart provides no values - it only contains helper templates
+# All helpers are defined in templates/_helpers.tpl

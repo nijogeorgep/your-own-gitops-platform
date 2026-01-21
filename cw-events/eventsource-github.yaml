@@ -1,0 +1,76 @@
+# EventSource: GitHub Webhooks
+# Listens for GitHub events (push, pull_request, release, etc.)
+# Configure GitHub webhook to point to: http://<event-source-svc>:12000/gitops-platform
+
+apiVersion: argoproj.io/v1alpha1
+kind: EventSource
+metadata:
+  name: github
+  namespace: argo-events
+spec:
+  # GitHub webhook configuration
+  github:
+    gitops-platform:
+      # Repository owner (organization or user)
+      owner: YOUR_GITHUB_ORG  # TODO: Update with your GitHub org/user
+      
+      # Repository name
+      repository: gitops-platform  # TODO: Update with your repo name
+      
+      # Webhook configuration
+      webhook:
+        endpoint: /gitops-platform
+        port: "12000"
+        method: POST
+      
+      # Events to listen for
+      events:
+        - push              # Code pushed to branch
+        - pull_request      # PR opened/updated
+        - release           # Release created
+        - create            # Tag/branch created
+      
+      # API token for GitHub authentication (create Secret manually)
+      # kubectl create secret generic github-access -n argo-events \
+      #   --from-literal=token=<github-personal-access-token>
+      apiToken:
+        name: github-access
+        key: token
+      
+      # Webhook secret for validating requests
+      # kubectl create secret generic github-webhook-secret -n argo-events \
+      #   --from-literal=secret=<random-string>
+      webhookSecret:
+        name: github-webhook-secret
+        key: secret
+      
+      # Enable to validate webhook signature
+      insecure: false
+      
+      # Filter branches (optional)
+      # branches:
+      #   - main
+      #   - develop
+      
+      # Content type
+      contentType: json
+      
+      # Active webhooks
+      active: true
+
+---
+# Service to expose EventSource
+apiVersion: v1
+kind: Service
+metadata:
+  name: github-eventsource-svc
+  namespace: argo-events
+spec:
+  selector:
+    eventsource-name: github
+  ports:
+    - name: webhook
+      port: 12000
+      targetPort: 12000
+      protocol: TCP
+  type: ClusterIP

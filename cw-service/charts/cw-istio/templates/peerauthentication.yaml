@@ -1,0 +1,87 @@
+{{/*
+=============================================================================
+ISTIO RESOURCE: PeerAuthentication
+=============================================================================
+Purpose: Configure mutual TLS (mTLS) authentication between services
+API: security.istio.io/v1beta1
+Condition: Only created when peerAuthentication.enabled=true
+Requires: Istio with sidecar proxies
+
+Features:
+  - Enforce mTLS for service-to-service communication
+  - Per-port mTLS configuration
+  - Zero-trust security model
+
+Modes:
+  - STRICT: Only encrypted mTLS traffic allowed (recommended for production)
+  - PERMISSIVE: Allow both mTLS and plain text (migration mode)
+  - DISABLE: Turn off mTLS (not recommended)
+
+Scope: Applies to all pods matching the selector (this service)
+*/}}
+{{- if .Values.peerAuthentication.enabled -}}
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: {{ .Values.service.name }}
+  {{- with .Values.peerAuthentication.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{/*
+  ===================================================================
+  SELECTOR
+  ===================================================================
+  Targets pods for this mTLS policy
+  Matches pods with app.kubernetes.io/name label
+  Empty selector = applies to all pods in namespace
+  */}}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ .Values.service.name }}
+  {{/*
+  ===================================================================
+  MTLS MODE
+  ===================================================================
+  Default mTLS mode for all ports
+  
+  STRICT (recommended):
+    - Only mTLS connections accepted
+    - Automatic mutual authentication
+    - Encrypted service-to-service traffic
+    - Zero-trust security
+  
+  PERMISSIVE (migration):
+    - Accept both mTLS and plaintext
+    - Use during gradual mTLS rollout
+    - Not recommended for production
+  
+  DISABLE:
+    - No mTLS enforcement
+    - Plain HTTP allowed
+    - Only for specific use cases (e.g., health checks)
+  */}}
+  mtls:
+    mode: {{ .Values.peerAuthentication.mtlsMode | default "STRICT" }}
+  {{- with .Values.peerAuthentication.portLevelMtls }}
+  {{/*
+  ===================================================================
+  PORT-LEVEL MTLS
+  ===================================================================
+  Override mTLS mode for specific ports
+  Useful when some ports need different security:
+    - Port 8080: STRICT (application traffic)
+    - Port 8081: DISABLE (health check endpoint)
+  
+  Example:
+    portLevelMtls:
+      "8080":
+        mode: STRICT
+      "8081":
+        mode: DISABLE
+  */}}
+  portLevelMtls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}

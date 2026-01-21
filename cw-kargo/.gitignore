@@ -1,0 +1,10 @@
+# Generated Kargo resources (auto-generated from templates)
+# Commit these to Git if you want version control of generated manifests
+# Or ignore them and regenerate as needed
+
+# Uncomment to ignore all generated project files:
+# projects/*/
+
+# Keep the projects directory structure but ignore content:
+# projects/**/*.yaml
+# !projects/.gitkeep

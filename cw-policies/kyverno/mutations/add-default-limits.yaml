@@ -1,0 +1,44 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: add-default-limits
+  labels:
+    policy.kyverno.io/severity: medium
+    policy.kyverno.io/category: resource-management
+  annotations:
+    policies.kyverno.io/title: Add Default Resource Limits
+    policies.kyverno.io/description: >-
+      Injects default resource limits and requests for containers without explicit values.
+      Prevents resource exhaustion while allowing override via explicit configuration.
+spec:
+  background: true
+  rules:
+  - name: add-default-cpu-memory
+    match:
+      any:
+      - resources:
+          kinds:
+          - Deployment
+          - Rollout
+          - Pod
+    preconditions:
+      all:
+      - key: "{{ request.object.spec.template.spec.containers[].resources.limits.cpu || '' }}"
+        operator: Equals
+        value: ""
+    mutate:
+      foreach:
+      - list: "request.object.spec.template.spec.containers[]"
+        patchStrategicMerge:
+          spec:
+            template:
+              spec:
+                containers:
+                - name: "{{ element.name }}"
+                  resources:
+                    limits:
+                      +(cpu): "500m"
+                      +(memory): "512Mi"
+                    requests:
+                      +(cpu): "100m"
+                      +(memory): "128Mi"

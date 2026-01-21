@@ -1,0 +1,99 @@
+{{/*
+=============================================================================
+GATEWAY API RESOURCE: HTTPRoute
+=============================================================================
+Purpose: Modern traffic routing for Kubernetes (successor to Ingress)
+API: gateway.networking.k8s.io/v1
+Condition: Only created when httpRoute.enabled=true
+Requirements: Gateway API CRDs + compatible controller (Istio, Envoy Gateway, etc.)
+
+Integration:
+  - Works with Istio Gateway for service mesh routing
+  - Supports Argo Rollouts for canary traffic splitting
+  - More expressive than Ingress (header matching, rewrites, retries)
+
+Exclusive: Do NOT enable both httpRoute and ingress simultaneously
+*/}}
+{{- if .Values.httpRoute.enabled -}}
+{{/* Capture service name and port for use in backendRefs */}}
+{{- $fullName := include "cw-service.fullname" . -}}
+{{- $svcPort := .Values.service.port -}}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ $fullName }}
+  labels:
+    {{- include "cw-service.labels" . | nindent 4 }}
+  {{- with .Values.httpRoute.annotations }}
+  {{/* Custom annotations (e.g., external-dns, cert-manager) */}}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{/*
+  ===================================================================
+  PARENT REFERENCES
+  ===================================================================
+  Links this route to one or more Gateways
+  Gateway must exist in cluster (typically in istio-system namespace)
+  sectionName: references specific listener in Gateway (http, https)
+  */}}
+  parentRefs:
+    {{- with .Values.httpRoute.parentRefs }}
+      {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with .Values.httpRoute.hostnames }}
+  {{/* DNS hostnames this route responds to */}}
+  hostnames:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{/*
+  ===================================================================
+  ROUTING RULES
+  ===================================================================
+  Ordered list of match conditions and routing actions
+  First matching rule is applied
+  */}}
+  rules:
+    {{- range .Values.httpRoute.rules }}
+    {{- with .matches }}
+    {{/*
+    =================================================================
+    MATCH CONDITIONS
+    =================================================================
+    Match incoming requests by:
+      - Path (Exact, PathPrefix, RegularExpression)
+      - Headers (name/value pairs)
+      - Query parameters
+      - HTTP method (GET, POST, etc.)
+    */}}
+    - matches:
+      {{- toYaml . | nindent 8 }}
+    {{- end }}
+    {{- with .filters }}
+      {{/*
+      =================================================================
+      FILTERS (Request/Response Modification)
+      =================================================================
+      Transform requests before reaching backend:
+        - RequestHeaderModifier: Add/set/remove headers
+        - RequestRedirect: HTTP redirects
+        - URLRewrite: Modify path
+      */}}
+      filters:
+      {{- toYaml . | nindent 8 }}
+    {{- end }}
+      {{/*
+      =================================================================
+      BACKEND REFERENCES
+      =================================================================
+      Destination services for matched traffic
+      Automatically set to the Service created by this chart
+      Supports weights for canary/blue-green deployments
+      */}}
+      backendRefs:
+        - name: {{ $fullName }}
+          port: {{ $svcPort }}
+          weight: 1
+    {{- end }}
+{{- end }}

@@ -1,0 +1,11 @@
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Project
+metadata:
+  name: nginx
+spec:
+  promotionPolicies:
+  - stage: staging
+    autoPromotionEnabled: true   # Auto-promote dev → staging
+  - stage: prod
+    autoPromotionEnabled: false  # Manual approval for staging → prod
+

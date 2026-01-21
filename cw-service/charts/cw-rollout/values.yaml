@@ -1,0 +1,92 @@
+# Default values for cw-rollout subchart
+# This chart is OPTIONAL - only used when rollout.enabled=true
+
+# Enable the entire rollout subchart
+enabled: false
+
+# Rollout configuration
+rollout:
+  # Strategy: "canary" or "bluegreen"
+  strategy: canary
+  
+  # Number of old ReplicaSets to retain for rollback
+  revisionHistoryLimit: 3
+  
+  # Canary deployment configuration
+  canary:
+    # Traffic shift steps (progressive rollout)
+    steps: []
+    
+    # Default pause duration between steps
+    pauseDuration: "5m"
+    
+    # Maximum surge during rollout
+    maxSurge: 1
+    
+    # Maximum unavailable during rollout
+    maxUnavailable: 0
+    
+    # Analysis for automated promotion/rollback
+    analysis: {}
+  
+  # Blue-Green deployment configuration
+  blueGreen:
+    autoPromotionEnabled: false
+    scaleDownDelaySeconds: 30
+    prePromotionAnalysis: {}
+    postPromotionAnalysis: {}
+
+# Analysis Templates (service-specific)
+analysisTemplates:
+  # Prometheus-based analysis
+  prometheus:
+    enabled: false
+    address: "http://prometheus.monitoring:9090"
+    successRate:
+      enabled: false
+      threshold: 0.95
+      interval: 60s
+      count: 5
+    errorRate:
+      enabled: false
+      threshold: 0.05
+      interval: 60s
+      count: 5
+    latency:
+      enabled: false
+      threshold: 500  # milliseconds
+      interval: 60s
+      count: 5
+  
+  # Datadog-based analysis
+  datadog:
+    enabled: false
+    apiKey: ""  # Reference from secret
+    appKey: ""  # Reference from secret
+    
+  # New Relic-based analysis
+  newrelic:
+    enabled: false
+    accountId: ""
+    queryKey: ""  # Reference from secret
+  
+  # Custom webhook analysis
+  webhook:
+    enabled: false
+    url: ""
+    
+# Experiments (A/B testing)
+experiments:
+  enabled: false
+  duration: "1h"
+  templates: []
+
+# Notifications on rollout events
+notifications:
+  enabled: false
+  slack:
+    enabled: false
+    webhook: ""  # Reference from secret
+  teams:
+    enabled: false
+    webhook: ""

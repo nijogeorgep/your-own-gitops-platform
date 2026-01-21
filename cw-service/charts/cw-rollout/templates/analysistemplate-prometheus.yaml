@@ -1,0 +1,108 @@
+{{/*
+=============================================================================
+ANALYSIS TEMPLATE: Prometheus Success Rate
+=============================================================================
+Purpose: Monitor HTTP success rate during canary rollout
+Triggers: Automatic rollback if success rate < threshold
+Metrics: Prometheus HTTP request metrics
+*/}}
+{{- if and .Values.enabled .Values.analysisTemplates.prometheus.successRate.enabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: {{ include "cw-rollout.fullname" . }}-success-rate
+  labels:
+    {{- include "cw-rollout.labels" . | nindent 4 }}
+spec:
+  args:
+  - name: service-name
+    value: {{ include "cw-rollout.fullname" . }}
+  - name: prometheus-url
+    value: {{ .Values.analysisTemplates.prometheus.address }}
+  
+  metrics:
+  - name: success-rate
+    interval: {{ .Values.analysisTemplates.prometheus.successRate.interval }}
+    count: {{ .Values.analysisTemplates.prometheus.successRate.count }}
+    successCondition: result >= {{ .Values.analysisTemplates.prometheus.successRate.threshold }}
+    failureLimit: 3
+    provider:
+      prometheus:
+        address: "{{`{{args.prometheus-url}}`}}"
+        query: |
+          sum(rate(http_requests_total{job="{{`{{args.service-name}}`}}",status=~"2.."}[5m]))
+          /
+          sum(rate(http_requests_total{job="{{`{{args.service-name}}`}}"}[5m]))
+{{- end }}
+---
+{{/*
+=============================================================================
+ANALYSIS TEMPLATE: Prometheus Error Rate
+=============================================================================
+Purpose: Monitor HTTP error rate during canary rollout
+Triggers: Automatic rollback if error rate > threshold
+*/}}
+{{- if and .Values.enabled .Values.analysisTemplates.prometheus.errorRate.enabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: {{ include "cw-rollout.fullname" . }}-error-rate
+  labels:
+    {{- include "cw-rollout.labels" . | nindent 4 }}
+spec:
+  args:
+  - name: service-name
+    value: {{ include "cw-rollout.fullname" . }}
+  - name: prometheus-url
+    value: {{ .Values.analysisTemplates.prometheus.address }}
+  
+  metrics:
+  - name: error-rate
+    interval: {{ .Values.analysisTemplates.prometheus.errorRate.interval }}
+    count: {{ .Values.analysisTemplates.prometheus.errorRate.count }}
+    successCondition: result <= {{ .Values.analysisTemplates.prometheus.errorRate.threshold }}
+    failureLimit: 3
+    provider:
+      prometheus:
+        address: "{{`{{args.prometheus-url}}`}}"
+        query: |
+          sum(rate(http_requests_total{job="{{`{{args.service-name}}`}}",status=~"5.."}[5m]))
+          /
+          sum(rate(http_requests_total{job="{{`{{args.service-name}}`}}"}[5m]))
+{{- end }}
+---
+{{/*
+=============================================================================
+ANALYSIS TEMPLATE: Prometheus Latency (P95)
+=============================================================================
+Purpose: Monitor P95 latency during canary rollout
+Triggers: Automatic rollback if latency > threshold (ms)
+*/}}
+{{- if and .Values.enabled .Values.analysisTemplates.prometheus.latency.enabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: {{ include "cw-rollout.fullname" . }}-latency
+  labels:
+    {{- include "cw-rollout.labels" . | nindent 4 }}
+spec:
+  args:
+  - name: service-name
+    value: {{ include "cw-rollout.fullname" . }}
+  - name: prometheus-url
+    value: {{ .Values.analysisTemplates.prometheus.address }}
+  
+  metrics:
+  - name: latency-p95
+    interval: {{ .Values.analysisTemplates.prometheus.latency.interval }}
+    count: {{ .Values.analysisTemplates.prometheus.latency.count }}
+    successCondition: result <= {{ .Values.analysisTemplates.prometheus.latency.threshold }}
+    failureLimit: 3
+    provider:
+      prometheus:
+        address: "{{`{{args.prometheus-url}}`}}"
+        query: |
+          histogram_quantile(0.95, 
+            sum(rate(http_request_duration_seconds_bucket{job="{{`{{args.service-name}}`}}"}[5m])) by (le)
+          ) * 1000
+{{- end }}

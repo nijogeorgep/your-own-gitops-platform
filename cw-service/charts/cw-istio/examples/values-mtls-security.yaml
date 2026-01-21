@@ -1,0 +1,100 @@
+# Example: Istio with mTLS Security Enforcement
+# File: services/myapp/values-prod.yaml
+
+# ================================================
+# STANDARD SERVICE CONFIGURATION
+# ================================================
+environment: prod
+region: us-east-1
+
+replicaCount: 3
+
+image:
+  repository: myregistry/myapp
+  pullPolicy: IfNotPresent
+  tag: "v1.5.0"
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+# ================================================
+# ISTIO WITH MTLS SECURITY
+# ================================================
+cw-istio:
+  enabled: true
+  
+  # VirtualService for routing
+  virtualService:
+    enabled: true
+    hosts:
+      - "myapp.example.com"
+    gateways:
+      - "istio-system/platform-gateway"
+    http:
+      - match:
+          - uri:
+              prefix: "/"
+        route:
+          - destination:
+              port: 80
+        timeout: 30s
+  
+  # DestinationRule with TLS settings
+  destinationRule:
+    enabled: true
+    trafficPolicy:
+      # mTLS for service-to-service communication
+      tls:
+        mode: ISTIO_MUTUAL  # Use Istio-managed mutual TLS
+      
+      loadBalancer:
+        simple: ROUND_ROBIN
+      
+      connectionPool:
+        tcp:
+          maxConnections: 100
+        http:
+          http1MaxPendingRequests: 50
+          http2MaxRequests: 100
+  
+  # PeerAuthentication - enforce mTLS
+  peerAuthentication:
+    enabled: true
+    
+    # STRICT mode requires mTLS for all traffic
+    mtlsMode: STRICT
+    
+    # Optional: Disable mTLS for specific ports (e.g., health checks)
+    # portLevelMtls:
+    #   8080:
+    #     mode: PERMISSIVE  # Allow both mTLS and plaintext
+
+# ================================================
+# SECURITY CONTEXTS
+# ================================================
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+
+# ================================================
+# RESOURCES
+# ================================================
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 250m
+    memory: 256Mi

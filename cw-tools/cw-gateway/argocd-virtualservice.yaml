@@ -1,0 +1,30 @@
+# ArgoCD VirtualService - Expose ArgoCD UI at /argocd path
+# Note: ArgoCD must be configured with server.basehref and server.rootpath
+
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: argocd-ui
+  namespace: argocd
+  labels:
+    app: argocd
+    component: ui
+spec:
+  hosts:
+  - "*"
+  gateways:
+  - istio-system/platform-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /argocd
+    route:
+    - destination:
+        host: argocd-server.argocd.svc.cluster.local
+        port:
+          number: 80
+      headers:
+        request:
+          set:
+            # Preserve original path for ArgoCD
+            x-forwarded-prefix: /argocd

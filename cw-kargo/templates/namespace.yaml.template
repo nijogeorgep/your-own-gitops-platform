@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kargo-{{SERVICE_NAME}}
+  labels:
+    app.kubernetes.io/managed-by: kargo
+    app.kubernetes.io/service: {{SERVICE_NAME}}
+    kargo.akuity.io/project: "true"

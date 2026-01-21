@@ -1,0 +1,35 @@
+# Staging environment overrides for nginx
+
+environment: staging
+region: us-east-1
+
+replicaCount: 2
+
+image:
+  tag: "stable"  # Use stable tag for staging
+
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 75
+
+# Enable HTTPRoute for Istio Gateway integration
+httpRoute:
+  enabled: true
+  parentRefs:
+    - name: platform-gateway
+      namespace: istio-system
+  rules:
+    - matches:
+      - path:
+          type: PathPrefix
+          value: /nginx-staging

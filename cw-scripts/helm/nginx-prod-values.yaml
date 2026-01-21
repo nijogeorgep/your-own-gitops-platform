@@ -1,0 +1,161 @@
+# Example deployment: Nginx web server in production
+# Usage: helm install nginx ../../cw-service -f nginx-prod-values.yaml
+
+# Naming convention components
+nameOverride: "nginx"
+environment: "prod"
+flavor: "web"  # Optional variant identifier
+region: "us-east-1"
+
+# Deployment configuration
+replicaCount: 3
+
+image:
+  repository: nginx
+  pullPolicy: IfNotPresent
+  tag: "1.25-alpine"
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 80
+
+# Health probes
+livenessProbe:
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 2
+
+# Production resource limits
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 250m
+    memory: 256Mi
+
+# ServiceAccount
+serviceAccount:
+  automount: false
+  annotations: {}
+
+# Autoscaling enabled for production
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+# Pod configuration
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "9113"  # nginx-prometheus-exporter
+
+podLabels:
+  app: nginx
+  tier: frontend
+  environment: production
+
+# Security contexts
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 101
+  fsGroup: 101
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+
+# Volumes
+volumes:
+  - name: cache
+    emptyDir: {}
+  - name: run
+    emptyDir: {}
+
+volumeMounts:
+  - name: cache
+    mountPath: /var/cache/nginx
+  - name: run
+    mountPath: /var/run
+
+# Pod anti-affinity for high availability
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      podAffinityTerm:
+        labelSelector:
+          matchExpressions:
+          - key: app
+            operator: In
+            values:
+            - nginx
+        topologyKey: kubernetes.io/hostname
+
+# Istio integration (enabled for production)
+cw-istio:
+  enabled: true
+  
+  virtualService:
+    enabled: true
+    annotations: {}
+    hosts:
+      - "nginx.example.com"
+    gateways:
+      - istio-system/gateway
+    http:
+      - match:
+        - uri:
+            prefix: /
+        route:
+        - destination:
+            port:
+              number: 80
+          weight: 100
+        retries:
+          attempts: 3
+          perTryTimeout: 2s
+        timeout: 30s
+  
+  destinationRule:
+    enabled: true
+    annotations: {}
+    trafficPolicy:
+      connectionPool:
+        tcp:
+          maxConnections: 100
+        http:
+          http1MaxPendingRequests: 50
+          http2MaxRequests: 100
+      loadBalancer:
+        simple: LEAST_REQUEST
+      outlierDetection:
+        consecutiveErrors: 5
+        interval: 30s
+        baseEjectionTime: 30s
+  
+  gateway:
+    enabled: false  # Use shared cluster gateway
+  
+  peerAuthentication:
+    enabled: true
+    mtlsMode: STRICT

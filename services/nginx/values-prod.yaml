@@ -1,0 +1,48 @@
+# Production environment overrides for nginx
+
+environment: prod
+region: us-east-1
+
+replicaCount: 3
+
+image:
+  tag: "1.25.3"  # Pin to specific version in production
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 250m
+    memory: 256Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+# Production-grade security
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 101
+  fsGroup: 101
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+
+# Enable HTTPRoute for Istio Gateway integration
+httpRoute:
+  enabled: true
+  parentRefs:
+    - name: platform-gateway
+      namespace: istio-system
+  rules:
+    - matches:
+      - path:
+          type: PathPrefix
+          value: /nginx

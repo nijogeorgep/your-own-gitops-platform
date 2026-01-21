@@ -1,0 +1,59 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: inject-istio-annotations
+  labels:
+    policy.kyverno.io/severity: low
+    policy.kyverno.io/category: service-mesh
+  annotations:
+    policies.kyverno.io/title: Inject Istio Sidecar Annotations
+    policies.kyverno.io/description: >-
+      Automatically adds Istio sidecar injection annotations to pods in production.
+      Ensures consistent service mesh enrollment without manual configuration.
+spec:
+  background: true
+  rules:
+  - name: add-istio-sidecar-annotation
+    match:
+      any:
+      - resources:
+          kinds:
+          - Deployment
+          - Rollout
+          namespaces:
+          - prod
+          - staging
+    exclude:
+      any:
+      - resources:
+          namespaces:
+          - kube-system
+          - argocd
+          - istio-system
+          - kyverno
+    mutate:
+      patchStrategicMerge:
+        spec:
+          template:
+            metadata:
+              labels:
+                +(sidecar.istio.io/inject): "true"
+  
+  - name: add-istio-metrics-annotations
+    match:
+      any:
+      - resources:
+          kinds:
+          - Deployment
+          - Rollout
+          namespaces:
+          - prod
+    mutate:
+      patchStrategicMerge:
+        spec:
+          template:
+            metadata:
+              annotations:
+                +(prometheus.io/scrape): "true"
+                +(prometheus.io/port): "15020"
+                +(prometheus.io/path): "/stats/prometheus"

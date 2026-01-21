@@ -1,0 +1,12 @@
+apiVersion: v2
+name: cw-rollout
+description: Argo Rollouts progressive delivery subchart for cw-service
+type: application
+version: 0.1.0
+appVersion: "1.0"
+
+# Dependency on cw-common for shared helpers
+dependencies:
+  - name: cw-common
+    version: 0.1.0
+    repository: "file://../cw-common"

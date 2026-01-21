@@ -1,0 +1,167 @@
+{{/*
+=============================================================================
+ISTIO RESOURCE: VirtualService
+=============================================================================
+Purpose: Define traffic routing rules within Istio service mesh
+API: networking.istio.io/v1beta1
+Condition: Only created when virtualService.enabled=true
+Requires: Istio installed in cluster
+
+Features:
+  - Advanced routing (canary, A/B testing, traffic mirroring)
+  - Request matching (URI, headers, query params)
+  - Traffic shifting with weights
+  - Fault injection and retries
+  - Timeouts and circuit breaking
+  - Header manipulation
+
+Integration:
+  - Works with Istio Gateway for ingress traffic
+  - Supports Argo Rollouts for progressive delivery
+  - Service name automatically inherited from parent chart
+*/}}
+{{- if .Values.virtualService.enabled -}}
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  {{/* VirtualService name matches the service for easy correlation */}}
+  name: {{ .Values.service.name }}
+  {{- with .Values.virtualService.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{/*
+  ===================================================================
+  HOSTS
+  ===================================================================
+  DNS names this VirtualService applies to
+  Can be:
+    - External hostnames (myapp.example.com)
+    - Service names (myapp-prod-us-east-1)
+    - Wildcard (*) for all hosts
+  */}}
+  hosts:
+    {{- range .Values.virtualService.hosts }}
+    - {{ . | quote }}
+    {{- end }}
+  {{- with .Values.virtualService.gateways }}
+  {{/*
+  ===================================================================
+  GATEWAYS
+  ===================================================================
+  Links VirtualService to Istio Gateways
+  Format: <namespace>/<gateway-name>
+  Special value 'mesh' = internal service-to-service traffic
+  */}}
+  gateways:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{/*
+  ===================================================================
+  HTTP ROUTING RULES
+  ===================================================================
+  Ordered list of routing rules
+  First matching rule is applied
+  Each rule can have:
+    - Match conditions (URI, headers, query params)
+    - Route destinations (with weights for canary)
+    - Filters (header manipulation, rewrites)
+    - Resilience (timeouts, retries, CORS)
+  */}}
+  http:
+    {{- range .Values.virtualService.http }}
+    - {{- if .match }}
+      {{/*
+      =================================================================
+      MATCH CONDITIONS
+      =================================================================
+      Filter requests by URI, headers, query params, methods
+      Multiple matchers within a rule are AND'ed
+      Multiple rules provide OR logic
+      */}}
+      match:
+        {{- toYaml .match | nindent 8 }}
+      {{- end }}
+      {{- if .route }}
+      {{/*
+      =================================================================
+      ROUTE DESTINATIONS
+      =================================================================
+      Target services with optional subsets and weights
+      Weights enable canary deployments (e.g., 90% stable, 10% canary)
+      Service name automatically set from parent chart
+      */}}
+      route:
+        {{- range .route }}
+        - destination:
+            host: {{ $.Values.service.name }}
+            {{- if .subset }}
+            {{/* Subset references DestinationRule subsets (stable/canary) */}}
+            subset: {{ .subset }}
+            {{- end }}
+            port:
+              number: {{ .port | default $.Values.service.port }}
+          {{- if .weight }}
+          {{/* Traffic weight percentage (must sum to 100 across all routes) */}}
+          weight: {{ .weight }}
+          {{- end }}
+        {{- end }}
+      {{- else }}
+      {{/* Default route when no explicit routes defined - 100% to main service */}}
+      route:
+        - destination:
+            host: {{ $.Values.service.name }}
+            port:
+              number: {{ $.Values.service.port }}
+      {{- end }}
+      {{- if .headers }}
+      {{/*
+      =================================================================
+      HEADER MANIPULATION
+      =================================================================
+      Modify request/response headers
+      Actions: set, add, remove
+      */}}
+      headers:
+        {{- toYaml .headers | nindent 8 }}
+      {{- end }}
+      {{- if .rewrite }}
+      {{/*
+      =================================================================
+      URL REWRITE
+      =================================================================
+      Rewrite URI before forwarding to backend
+      Example: /api/v1 -> /v1
+      */}}
+      rewrite:
+        {{- toYaml .rewrite | nindent 8 }}
+      {{- end }}
+      {{- if .timeout }}
+      {{/* Request timeout - fails request if backend exceeds this */}}
+      timeout: {{ .timeout }}
+      {{- end }}
+      {{- if .retries }}
+      {{/*
+      =================================================================
+      RETRY POLICY
+      =================================================================
+      Automatic retries on failures
+      Configure: attempts, perTryTimeout, retryOn conditions
+      */}}
+      retries:
+        {{- toYaml .retries | nindent 8 }}
+      {{- end }}
+      {{- if .corsPolicy }}
+      {{/*
+      =================================================================
+      CORS POLICY
+      =================================================================
+      Cross-Origin Resource Sharing configuration
+      Define allowed origins, methods, headers, credentials
+      */}}
+      corsPolicy:
+        {{- toYaml .corsPolicy | nindent 8 }}
+      {{- end }}
+    {{- end }}
+{{- end }}

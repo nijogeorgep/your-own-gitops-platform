@@ -1,0 +1,176 @@
+# Sensor: Automated Image Update Pipeline
+# Triggers when new code is pushed to main branch
+# Workflow: Build image → Push to registry → Update Git values → ArgoCD syncs
+
+apiVersion: argoproj.io/v1alpha1
+kind: Sensor
+metadata:
+  name: image-update-pipeline
+  namespace: argo-events
+spec:
+  template:
+    serviceAccountName: argo-events-sa
+  
+  # Dependencies: Events to listen for
+  dependencies:
+    - name: github-push
+      eventSourceName: github
+      eventName: gitops-platform
+      filters:
+        data:
+          # Only trigger on push to main branch
+          - path: body.ref
+            type: string
+            value:
+              - "refs/heads/main"
+          
+          # Only trigger if files in services/ changed
+          - path: body.commits.#.modified
+            type: string
+            comparator: "~"
+            value:
+              - "^services/.*"
+  
+  # Triggers: Actions to execute
+  triggers:
+    - template:
+        name: build-and-update-workflow
+        k8s:
+          operation: create
+          source:
+            resource:
+              apiVersion: argoproj.io/v1alpha1
+              kind: Workflow
+              metadata:
+                generateName: image-update-
+                namespace: argo-workflows
+              spec:
+                # Service account with permissions to update Git
+                serviceAccountName: workflow-executor
+                
+                # Workflow entrypoint
+                entrypoint: build-push-update
+                
+                # Cleanup completed workflows after 1 day
+                ttlStrategy:
+                  secondsAfterCompletion: 86400
+                
+                # Input parameters from GitHub event
+                arguments:
+                  parameters:
+                    - name: repo-url
+                      value: ""  # Set from event payload
+                    - name: commit-sha
+                      value: ""  # Set from event payload
+                    - name: branch
+                      value: "main"
+                    - name: service-name
+                      value: ""  # Detect from modified files
+                
+                # Workflow DAG
+                templates:
+                  - name: build-push-update
+                    dag:
+                      tasks:
+                        # Step 1: Detect which service changed
+                        - name: detect-service
+                          template: detect-changed-service
+                        
+                        # Step 2: Build container image
+                        - name: build-image
+                          template: build-container
+                          depends: "detect-service"
+                          arguments:
+                            parameters:
+                              - name: service
+                                value: "{{tasks.detect-service.outputs.parameters.service}}"
+                        
+                        # Step 3: Push to container registry
+                        - name: push-image
+                          template: push-to-registry
+                          depends: "build-image"
+                          arguments:
+                            parameters:
+                              - name: image-tag
+                                value: "{{tasks.build-image.outputs.parameters.image-tag}}"
+                        
+                        # Step 4: Update Git values files
+                        - name: update-git
+                          template: update-values-file
+                          depends: "push-image"
+                          arguments:
+                            parameters:
+                              - name: service
+                                value: "{{tasks.detect-service.outputs.parameters.service}}"
+                              - name: new-tag
+                                value: "{{tasks.build-image.outputs.parameters.image-tag}}"
+                  
+                  # Placeholder templates (implement in WorkflowTemplates)
+                  - name: detect-changed-service
+                    container:
+                      image: alpine/git:latest
+                      command: [sh, -c]
+                      args:
+                        - echo "nginx" > /tmp/service.txt
+                      outputs:
+                        parameters:
+                          - name: service
+                            valueFrom:
+                              path: /tmp/service.txt
+                  
+                  - name: build-container
+                    inputs:
+                      parameters:
+                        - name: service
+                    container:
+                      image: gcr.io/kaniko-project/executor:latest
+                      command: ["/kaniko/executor"]
+                      args:
+                        - --context=git://github.com/YOUR_ORG/gitops-platform.git
+                        - --dockerfile=services/{{inputs.parameters.service}}/Dockerfile
+                        - --destination=YOUR_REGISTRY/{{inputs.parameters.service}}:{{workflow.parameters.commit-sha}}
+                        - --cache=true
+                    outputs:
+                      parameters:
+                        - name: image-tag
+                          value: "{{workflow.parameters.commit-sha}}"
+                  
+                  - name: push-to-registry
+                    inputs:
+                      parameters:
+                        - name: image-tag
+                    container:
+                      image: alpine:latest
+                      command: [sh, -c]
+                      args:
+                        - echo "Image pushed: {{inputs.parameters.image-tag}}"
+                  
+                  - name: update-values-file
+                    inputs:
+                      parameters:
+                        - name: service
+                        - name: new-tag
+                    container:
+                      image: alpine/git:latest
+                      command: [sh, -c]
+                      args:
+                        - |
+                          echo "Would update services/{{inputs.parameters.service}}/values-dev.yaml"
+                          echo "New image tag: {{inputs.parameters.new-tag}}"
+          
+          # Map GitHub event payload to workflow parameters
+          parameters:
+            - src:
+                dependencyName: github-push
+                dataKey: body.repository.clone_url
+              dest: spec.arguments.parameters.0.value
+            
+            - src:
+                dependencyName: github-push
+                dataKey: body.after
+              dest: spec.arguments.parameters.1.value
+            
+            - src:
+                dependencyName: github-push
+                dataKey: body.ref
+              dest: spec.arguments.parameters.2.value

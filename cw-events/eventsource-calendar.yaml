@@ -1,0 +1,27 @@
+# EventSource: Calendar (Cron-based events)
+# Useful for scheduled builds, cleanup jobs, health checks
+
+apiVersion: argoproj.io/v1alpha1
+kind: EventSource
+metadata:
+  name: calendar
+  namespace: argo-events
+spec:
+  calendar:
+    # Nightly build trigger (2 AM UTC)
+    nightly-build:
+      schedule: "0 2 * * *"
+      interval: "24h"
+      timezone: "UTC"
+    
+    # Health check every 5 minutes
+    health-check:
+      schedule: "*/5 * * * *"
+      interval: "5m"
+      timezone: "UTC"
+    
+    # Weekly cleanup (Sunday 3 AM)
+    weekly-cleanup:
+      schedule: "0 3 * * 0"
+      interval: "168h"
+      timezone: "UTC"

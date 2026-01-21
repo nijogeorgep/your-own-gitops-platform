@@ -1,0 +1,21 @@
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Warehouse
+metadata:
+  name: {{SERVICE_NAME}}-warehouse
+  namespace: kargo-{{SERVICE_NAME}}
+  labels:
+    app.kubernetes.io/name: {{SERVICE_NAME}}
+    app.kubernetes.io/component: warehouse
+spec:
+  # Watch for new container images in registry
+  subscriptions:
+  - image:
+      repoURL: {{IMAGE_REPOSITORY}}
+      semverConstraint: ^1.0.0  # Adjust version constraint as needed
+      discoveryLimit: 10
+      platform: linux/amd64
+  
+  # Also watch Git repository for manual triggers
+  - git:
+      repoURL: {{GIT_REPO_URL}}
+      branch: main

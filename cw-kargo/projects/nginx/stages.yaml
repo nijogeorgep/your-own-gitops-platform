@@ -1,0 +1,133 @@
+# Stage 1: Development (subscribes to Warehouse)
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: dev
+  namespace: kargo-nginx
+spec:
+  subscriptions:
+    warehouse: nginx
+  
+  promotionTemplate:
+    spec:
+      steps:
+      # Clone the Git repository
+      - uses: git-clone
+        config:
+          repoURL: https://github.com/YOUR_ORG/gitops-platform.git
+          checkout:
+          - branch: main
+            path: ./repo
+      
+      # Update values-dev.yaml with new image
+      - uses: git-clear
+        config:
+          path: ./repo
+      
+      - uses: kustomize-set-image
+        as: update-image
+        config:
+          path: ./repo/services/nginx/values-dev.yaml
+          images:
+          - image: your-registry.io/nginx
+      
+      # Commit and push changes
+      - uses: git-commit
+        config:
+          path: ./repo
+          messageFromSteps:
+          - update-image
+      
+      - uses: git-push
+        config:
+          path: ./repo
+          targetBranch: main
+
+---
+# Stage 2: Staging (subscribes to dev stage)
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: staging
+  namespace: kargo-nginx
+spec:
+  subscriptions:
+    upstreamStages:
+    - name: dev
+  
+  promotionTemplate:
+    spec:
+      steps:
+      - uses: git-clone
+        config:
+          repoURL: https://github.com/YOUR_ORG/gitops-platform.git
+          checkout:
+          - branch: main
+            path: ./repo
+      
+      - uses: git-clear
+        config:
+          path: ./repo
+      
+      - uses: kustomize-set-image
+        as: update-image
+        config:
+          path: ./repo/services/nginx/values-staging.yaml
+          images:
+          - image: your-registry.io/nginx
+      
+      - uses: git-commit
+        config:
+          path: ./repo
+          messageFromSteps:
+          - update-image
+      
+      - uses: git-push
+        config:
+          path: ./repo
+          targetBranch: main
+
+---
+# Stage 3: Production (subscribes to staging stage)
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: prod
+  namespace: kargo-nginx
+spec:
+  subscriptions:
+    upstreamStages:
+    - name: staging
+  
+  promotionTemplate:
+    spec:
+      steps:
+      - uses: git-clone
+        config:
+          repoURL: https://github.com/YOUR_ORG/gitops-platform.git
+          checkout:
+          - branch: main
+            path: ./repo
+      
+      - uses: git-clear
+        config:
+          path: ./repo
+      
+      - uses: kustomize-set-image
+        as: update-image
+        config:
+          path: ./repo/services/nginx/values-prod.yaml
+          images:
+          - image: your-registry.io/nginx
+      
+      - uses: git-commit
+        config:
+          path: ./repo
+          messageFromSteps:
+          - update-image
+      
+      - uses: git-push
+        config:
+          path: ./repo
+          targetBranch: main
+

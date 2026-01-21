@@ -1,0 +1,75 @@
+# Base values for nginx service
+# Shared across all environments
+
+replicaCount: 2
+
+image:
+  repository: nginx
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+serviceAccount:
+  create: true
+  automount: true
+  annotations: {}
+
+podAnnotations:
+  sidecar.istio.io/inject: "true"
+
+podLabels: {}
+
+podSecurityContext: {}
+
+securityContext: {}
+
+service:
+  type: ClusterIP
+  port: 80
+
+# Multi-port support (optional)
+# service:
+#   type: ClusterIP
+#   ports:
+#     - name: http
+#       port: 80
+#       targetPort: 80
+#       protocol: TCP
+
+httpRoute:
+  enabled: false
+  parentRefs: []
+  rules: []
+
+ingress:
+  enabled: false
+
+resources:
+  limits:
+    cpu: 100m
+    memory: 128Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
+livenessProbe:
+  httpGet:
+    path: /
+    port: http
+
+readinessProbe:
+  httpGet:
+    path: /
+    port: http
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+
+volumes: []
+volumeMounts: []
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

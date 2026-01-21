@@ -1,0 +1,26 @@
+# Argo Rollouts Dashboard VirtualService - Expose dashboard at /rollouts path
+
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: rollouts-dashboard
+  namespace: argo-rollouts
+  labels:
+    app: argo-rollouts
+    component: dashboard
+spec:
+  hosts:
+  - "*"
+  gateways:
+  - istio-system/platform-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /rollouts
+    rewrite:
+      uri: /
+    route:
+    - destination:
+        host: argo-rollouts-dashboard.argo-rollouts.svc.cluster.local
+        port:
+          number: 3100

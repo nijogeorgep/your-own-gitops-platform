@@ -1,0 +1,47 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kyverno-policies
+  namespace: argocd
+  labels:
+    app.kubernetes.io/name: kyverno-policies
+    app.kubernetes.io/component: policy-enforcement
+    app.kubernetes.io/part-of: gitops-platform
+spec:
+  project: default
+  
+  source:
+    repoURL: https://github.com/YOUR_ORG/gitops-platform.git  # UPDATE THIS
+    targetRevision: main
+    path: cw-policies/kyverno
+    
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kyverno
+  
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    syncOptions:
+    - CreateNamespace=false  # Kyverno namespace created by Helm
+    - PrunePropagationPolicy=foreground
+    - PruneLast=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+  
+  # Health assessment for policy resources
+  ignoreDifferences:
+  - group: kyverno.io
+    kind: ClusterPolicy
+    jsonPointers:
+    - /status
+  - group: kyverno.io
+    kind: PolicyException
+    jsonPointers:
+    - /status

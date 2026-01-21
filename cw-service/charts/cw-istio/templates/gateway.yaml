@@ -1,0 +1,105 @@
+{{/*
+=============================================================================
+ISTIO RESOURCE: Gateway
+=============================================================================
+Purpose: Configure ingress/egress traffic entry points for service mesh
+API: networking.istio.io/v1beta1
+Condition: Only created when gateway.enabled=true
+Requires: Istio with Ingress Gateway deployed
+
+Features:
+  - L4-L6 load balancing configuration
+  - Protocol selection (HTTP, HTTPS, TCP, gRPC)
+  - TLS termination and SNI routing
+  - Multi-port listeners
+
+Used with: VirtualService to route traffic from Gateway to services
+Typical Setup: One shared Gateway per cluster, VirtualServices reference it
+*/}}
+{{- if .Values.gateway.enabled -}}
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: {{ .Values.service.name }}
+  {{- with .Values.gateway.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.gateway.selector }}
+  {{/*
+  ===================================================================
+  SELECTOR
+  ===================================================================
+  Selects Istio ingress gateway pods to apply this configuration
+  Typically matches istio-ingressgateway deployment labels
+  Common: istio: ingressgateway
+  */}}
+  selector:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{/*
+  ===================================================================
+  SERVERS
+  ===================================================================
+  Listener configurations for incoming traffic
+  Each server defines:
+    - Port configuration (number, name, protocol)
+    - Hosts (DNS names this listener accepts)
+    - TLS settings (certificates, modes)
+  
+  Multiple servers enable:
+    - HTTP + HTTPS listeners
+    - SNI-based routing
+    - Different certs per hostname
+  */}}
+  servers:
+    {{- range .Values.gateway.servers }}
+    - port:
+        number: {{ .port.number }}
+        name: {{ .port.name }}
+        {{/*
+        Protocol options:
+          - HTTP: Plain HTTP traffic
+          - HTTPS: TLS-encrypted HTTP
+          - TCP: Raw TCP traffic
+          - TLS: Generic TLS (non-HTTP)
+          - GRPC: gRPC protocol
+        */}}
+        protocol: {{ .port.protocol | default "HTTP" }}
+      {{- if .hosts }}
+      {{/*
+      =================================================================
+      HOSTS
+      =================================================================
+      DNS names this listener accepts
+      Supports:
+        - Exact: myapp.example.com
+        - Wildcard: *.example.com
+        - Catch-all: *
+      */}}
+      hosts:
+        {{- range .hosts }}
+        - {{ . | quote }}
+        {{- end }}
+      {{- end }}
+      {{- if .tls }}
+      {{/*
+      =================================================================
+      TLS CONFIGURATION
+      =================================================================
+      HTTPS/TLS settings
+      Modes:
+        - SIMPLE: Standard TLS (1-way)
+        - MUTUAL: mTLS (client cert required)
+        - PASSTHROUGH: SNI routing without termination
+        - AUTO_PASSTHROUGH: Auto-detect SNI
+      
+      credentialName: Kubernetes Secret with tls.crt/tls.key
+      Can use cert-manager for automatic cert management
+      */}}
+      tls:
+        {{- toYaml .tls | nindent 8 }}
+      {{- end }}
+    {{- end }}
+{{- end }}

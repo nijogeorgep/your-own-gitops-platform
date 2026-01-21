@@ -1,0 +1,67 @@
+# Example: Blue-Green Deployment Strategy
+# Instant switchover with easy rollback
+
+environment: prod
+region: us-east-1
+replicaCount: 3
+
+image:
+  repository: your-registry.io/myapp
+  tag: "v2.0.0"
+
+# Enable Blue-Green rollout
+cw-rollout:
+  enabled: true
+  
+  rollout:
+    strategy: bluegreen  # Instead of canary
+    
+    blueGreen:
+      # Manual approval required (safer for prod)
+      autoPromotionEnabled: false
+      
+      # Wait 5 minutes before scaling down old version
+      # Allows quick rollback if issues detected
+      scaleDownDelaySeconds: 300
+      
+      # Optional: Run tests before promotion
+      # prePromotionAnalysis:
+      #   templates:
+      #   - templateName: smoke-tests
+      
+      # Optional: Monitor after promotion
+      # postPromotionAnalysis:
+      #   templates:
+      #   - templateName: error-rate-check
+
+# Blue-green requires 2 services (active + preview)
+# These are created automatically by Argo Rollouts:
+# - myapp-prod-us-east-1 (active)
+# - myapp-prod-us-east-1-preview (preview)
+
+# HTTPRoute configuration
+# Note: For blue-green, you'll promote via kubectl/UI
+httpRoute:
+  enabled: true
+  parentRefs:
+    - name: platform-gateway
+      namespace: istio-system
+  rules:
+    - matches:
+      - path:
+          type: PathPrefix
+          value: /myapp
+
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 250m
+    memory: 256Mi

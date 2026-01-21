@@ -1,0 +1,36 @@
+{{/*
+=============================================================================
+ANALYSIS TEMPLATE: Custom Webhook
+=============================================================================
+Purpose: Call custom webhook for health checks during canary rollout
+Triggers: Automatic rollback based on webhook response
+Use Case: Custom smoke tests, integration tests, business metrics
+*/}}
+{{- if and .Values.enabled .Values.analysisTemplates.webhook.enabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: {{ include "cw-rollout.fullname" . }}-webhook
+  labels:
+    {{- include "cw-rollout.labels" . | nindent 4 }}
+spec:
+  args:
+  - name: service-name
+    value: {{ include "cw-rollout.fullname" . }}
+  - name: webhook-url
+    value: {{ .Values.analysisTemplates.webhook.url }}
+  
+  metrics:
+  - name: webhook-health-check
+    interval: 60s
+    count: 5
+    successCondition: result.status == "healthy"
+    failureLimit: 3
+    provider:
+      web:
+        url: "{{`{{args.webhook-url}}`}}"
+        headers:
+        - key: X-Service-Name
+          value: "{{`{{args.service-name}}`}}"
+        jsonPath: "{$.status}"
+{{- end }}

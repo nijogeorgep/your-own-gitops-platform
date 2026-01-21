@@ -1,0 +1,146 @@
+# Stage 1: Development (subscribes to Warehouse)
+# Name matches deployment: <service>-<env>-<region>
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: {{SERVICE_NAME}}-dev-{{REGION}}
+  namespace: kargo-{{SERVICE_NAME}}
+  labels:
+    app.kubernetes.io/name: {{SERVICE_NAME}}
+    app.kubernetes.io/environment: dev
+    app.kubernetes.io/region: {{REGION}}
+spec:
+  subscriptions:
+    warehouse: {{SERVICE_NAME}}-warehouse
+  
+  promotionTemplate:
+    spec:
+      steps:
+      # Clone the Git repository
+      - uses: git-clone
+        config:
+          repoURL: {{GIT_REPO_URL}}
+          checkout:
+          - branch: main
+            path: ./repo
+      
+      # Update values-dev.yaml with new image
+      - uses: git-clear
+        config:
+          path: ./repo
+      
+      - uses: kustomize-set-image
+        as: update-image
+        config:
+          path: ./repo/services/{{SERVICE_NAME}}/values-dev.yaml
+          images:
+          - image: {{IMAGE_REPOSITORY}}
+      
+      # Commit and push changes
+      - uses: git-commit
+        config:
+          path: ./repo
+          messageFromSteps:
+          - update-image
+      
+      - uses: git-push
+        config:
+          path: ./repo
+          targetBranch: main
+
+---
+# Stage 2: Staging (subscribes to dev stage)
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: {{SERVICE_NAME}}-staging-{{REGION}}
+  namespace: kargo-{{SERVICE_NAME}}
+  labels:
+    app.kubernetes.io/name: {{SERVICE_NAME}}
+    app.kubernetes.io/environment: staging
+    app.kubernetes.io/region: {{REGION}}
+spec:
+  subscriptions:
+    upstreamStages:
+    - name: {{SERVICE_NAME}}-dev-{{REGION}}
+  
+  promotionTemplate:
+    spec:
+      steps:
+      - uses: git-clone
+        config:
+          repoURL: {{GIT_REPO_URL}}
+          checkout:
+          - branch: main
+            path: ./repo
+      
+      - uses: git-clear
+        config:
+          path: ./repo
+      
+      - uses: kustomize-set-image
+        as: update-image
+        config:
+          path: ./repo/services/{{SERVICE_NAME}}/values-staging.yaml
+          images:
+          - image: {{IMAGE_REPOSITORY}}
+      
+      - uses: git-commit
+        config:
+          path: ./repo
+          messageFromSteps:
+          - update-image
+      
+      - uses: git-push
+        config:
+          path: ./repo
+          targetBranch: main
+
+---
+# Stage 3: Production (subscribes to staging stage)
+# Requires manual approval for promotions
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Stage
+metadata:
+  name: {{SERVICE_NAME}}-prod-{{REGION}}
+  namespace: kargo-{{SERVICE_NAME}}
+  labels:
+    app.kubernetes.io/name: {{SERVICE_NAME}}
+    app.kubernetes.io/environment: prod
+    app.kubernetes.io/region: {{REGION}}
+spec:
+  subscriptions:
+    upstreamStages:
+    - name: {{SERVICE_NAME}}-staging-{{REGION}}
+  
+  promotionTemplate:
+    spec:
+      steps:
+      - uses: git-clone
+        config:
+          repoURL: {{GIT_REPO_URL}}
+          checkout:
+          - branch: main
+            path: ./repo
+      
+      - uses: git-clear
+        config:
+          path: ./repo
+      
+      - uses: kustomize-set-image
+        as: update-image
+        config:
+          path: ./repo/services/{{SERVICE_NAME}}/values-prod.yaml
+          images:
+          - image: {{IMAGE_REPOSITORY}}
+      
+      - uses: git-commit
+        config:
+          path: ./repo
+          messageFromSteps:
+          - update-image
+      
+      - uses: git-push
+        config:
+          path: ./repo
+          targetBranch: main

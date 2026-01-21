@@ -1,0 +1,92 @@
+{{/*
+=============================================================================
+ISTIO RESOURCE: DestinationRule
+=============================================================================
+Purpose: Configure traffic policies for service mesh traffic
+API: networking.istio.io/v1beta1
+Condition: Only created when destinationRule.enabled=true
+Requires: Istio installed in cluster
+
+Features:
+  - Load balancing algorithms (round robin, least conn, consistent hash)
+  - Connection pooling (max connections, timeouts)
+  - Circuit breaking (outlier detection)
+  - TLS settings for upstream connections
+  - Service subsets (version-based routing for canary)
+
+Used with: VirtualService for complete traffic management
+*/}}
+{{- if .Values.destinationRule.enabled -}}
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: {{ .Values.service.name }}
+  {{- with .Values.destinationRule.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{/* Target service - matches Service name from parent chart */}}
+  host: {{ .Values.service.name }}
+  {{- with .Values.destinationRule.trafficPolicy }}
+  {{/*
+  ===================================================================
+  TRAFFIC POLICY
+  ===================================================================
+  Applies to all traffic to this service (unless overridden by subset policies)
+  Configures:
+    - Load balancing strategy
+    - Connection pooling limits
+    - Circuit breaking (outlier detection)
+    - TLS mode for upstream
+  */}}
+  trafficPolicy:
+    {{- toYaml . | nindent 4 }}
+    {{/*
+    Load Balancer Options:
+      - simple: ROUND_ROBIN, LEAST_CONN, RANDOM, PASSTHROUGH
+      - consistentHash: Hash by header, cookie, or source IP
+      
+    Connection Pool (TCP/HTTP):
+      - maxConnections: Limit concurrent connections
+      - http1MaxPendingRequests: Queue size for HTTP/1.1
+      - http2MaxRequests: Max concurrent streams for HTTP/2
+      
+    Outlier Detection (Circuit Breaker):
+      - consecutiveErrors: Failures before ejection
+      - interval: Time between ejection sweeps
+      - baseEjectionTime: Minimum ejection duration
+      - maxEjectionPercent: Max % of hosts to eject
+    */}}
+  {{- end }}
+  {{- with .Values.destinationRule.subsets }}
+  {{/*
+  ===================================================================
+  SUBSETS
+  ===================================================================
+  Define service versions for canary/blue-green deployments
+  Each subset:
+    - Has a unique name (stable, canary, v1, v2)
+    - Selects pods by labels (version: stable)
+    - Can override traffic policy
+  
+  Used by VirtualService to route % traffic to different versions
+  
+  Example Canary Setup:
+    Subsets: stable (90%) + canary (10%)
+    VirtualService routes traffic with weights
+    Argo Rollouts manages progressive traffic shift
+  */}}
+  subsets:
+    {{- range . }}
+    - name: {{ .name }}
+      labels:
+        {{- toYaml .labels | nindent 8 }}
+      {{- if .trafficPolicy }}
+      {{/* Subset-specific traffic policy (overrides default) */}}
+      trafficPolicy:
+        {{- toYaml .trafficPolicy | nindent 8 }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+{{- end }}

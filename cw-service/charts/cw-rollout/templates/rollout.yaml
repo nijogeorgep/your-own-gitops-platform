@@ -1,0 +1,225 @@
+{{/*
+=============================================================================
+KUBERNETES RESOURCE: Rollout (Argo Rollouts)
+=============================================================================
+Purpose: Progressive delivery with canary deployments and automated rollbacks
+Replaces: Deployment (mutually exclusive - use rollout.enabled to enable)
+Integrations: Istio/HTTPRoute for traffic splitting, Analysis for health checks
+
+Key Features:
+  - Canary strategy (gradual traffic shift: 10% → 25% → 50% → 100%)
+  - Blue-green deployments (instant switch with rollback capability)
+  - Analysis templates (automated promotion based on metrics)
+  - Manual approval gates for production
+  - Automatic rollback on failure
+
+Usage:
+  Set rollout.enabled=true in values-<env>.yaml to enable
+  Do NOT enable both Deployment and Rollout simultaneously
+*/}}
+{{- if .Values.enabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  {{/* Resource name follows platform naming standard */}}
+  name: {{ include "cw-rollout.fullname" . }}
+  labels:
+    {{/* Standard Kubernetes recommended labels */}}
+    {{- include "cw-rollout.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  {{/* Static replica count - disabled when HPA is active */}}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  
+  {{/* Number of old ReplicaSets to retain for rollback */}}
+  revisionHistoryLimit: {{ .Values.rollout.revisionHistoryLimit }}
+  
+  selector:
+    {{/* Pod selector - MUST match template.metadata.labels */}}
+    matchLabels:
+      {{- include "cw-rollout.selectorLabels" . | nindent 6 }}
+  
+  {{/*
+  =================================================================
+  DEPLOYMENT STRATEGY: Canary or BlueGreen
+  =================================================================
+  */}}
+  strategy:
+    {{- if eq .Values.rollout.strategy "bluegreen" }}
+    {{/* Blue-Green: Instant switch with easy rollback */}}
+    blueGreen:
+      activeService: {{ include "cw-rollout.fullname" . }}
+      previewService: {{ include "cw-rollout.fullname" . }}-preview
+      autoPromotionEnabled: {{ .Values.rollout.blueGreen.autoPromotionEnabled | default false }}
+      {{- with .Values.rollout.blueGreen.scaleDownDelaySeconds }}
+      scaleDownDelaySeconds: {{ . }}
+      {{- end }}
+      {{- with .Values.rollout.blueGreen.prePromotionAnalysis }}
+      prePromotionAnalysis:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.rollout.blueGreen.postPromotionAnalysis }}
+      postPromotionAnalysis:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    {{- else }}
+    {{/* Canary: Gradual traffic shift (default strategy) */}}
+    canary:
+      {{/* Canary and stable service names for traffic splitting */}}
+      canaryService: {{ include "cw-rollout.fullname" . }}-canary
+      stableService: {{ include "cw-rollout.fullname" . }}
+      
+      {{/*
+      =================================================================
+      TRAFFIC ROUTING: Istio or HTTPRoute
+      =================================================================
+      */}}
+      {{- if .Values.httpRoute.enabled }}
+      {{/* Use Gateway API HTTPRoute for traffic splitting */}}
+      trafficRouting:
+        plugins:
+          argoproj-labs/gatewayAPI:
+            httpRoute: {{ include "cw-rollout.fullname" . }}
+            namespace: {{ .Release.Namespace }}
+      {{- else if .Values.cw-istio.enabled }}
+      {{/* Use Istio VirtualService for traffic splitting */}}
+      trafficRouting:
+        istio:
+          virtualService:
+            name: {{ include "cw-rollout.fullname" . }}
+      {{- end }}
+      
+      {{/*
+      =================================================================
+      CANARY STEPS: Traffic progression
+      =================================================================
+      Customizable via rollout.canary.steps in values files
+      */}}
+      steps:
+      {{- if .Values.rollout.canary.steps }}
+        {{- toYaml .Values.rollout.canary.steps | nindent 8 }}
+      {{- else }}
+        {{/* Default progressive rollout for production safety */}}
+        - setWeight: 10
+        - pause: 
+            duration: {{ .Values.rollout.canary.pauseDuration | default "5m" }}
+        - setWeight: 25
+        - pause: 
+            duration: {{ .Values.rollout.canary.pauseDuration | default "5m" }}
+        - setWeight: 50
+        - pause: 
+            duration: {{ .Values.rollout.canary.pauseDuration | default "10m" }}
+        - setWeight: 75
+        - pause: 
+            duration: {{ .Values.rollout.canary.pauseDuration | default "5m" }}
+      {{- end }}
+      
+      {{/* Analysis during canary (automated promotion/rollback) */}}
+      {{- with .Values.rollout.canary.analysis }}
+      analysis:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      
+      {{/* Maximum number of pods beyond desired count during update */}}
+      {{- with .Values.rollout.canary.maxSurge }}
+      maxSurge: {{ . }}
+      {{- end }}
+      
+      {{/* Maximum number of pods unavailable during update */}}
+      {{- with .Values.rollout.canary.maxUnavailable }}
+      maxUnavailable: {{ . }}
+      {{- end }}
+    {{- end }}
+  
+  {{/*
+  =================================================================
+  POD TEMPLATE: Same as Deployment
+  =================================================================
+  */}}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "cw-service.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "cw-service.serviceAccountName" . }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            {{- if .Values.service.ports }}
+            {{- range .Values.service.ports }}
+            - name: {{ .name }}
+              containerPort: {{ .targetPort }}
+              protocol: {{ .protocol | default "TCP" }}
+            {{- end }}
+            {{- else }}
+            - name: http
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+            {{- end }}
+          {{- with .Values.livenessProbe }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.startupProbe }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- if or .Values.env .Values.envFrom }}
+          {{- with .Values.env }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.envFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- end }}
+          {{- with .Values.volumeMounts }}
+          volumeMounts:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .Values.volumes }}
+      volumes:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

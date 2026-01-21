@@ -1,0 +1,143 @@
+# RBAC for Argo Workflows and Events Integration
+
+---
+# ServiceAccount for Workflow execution
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: workflow-executor
+  namespace: argo-workflows
+
+---
+# ServiceAccount for Argo Events Sensors
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: argo-events-sa
+  namespace: argo-events
+
+---
+# Role: Allow Workflows to be created/managed
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: workflow-creator
+  namespace: argo-workflows
+rules:
+  - apiGroups:
+      - argoproj.io
+    resources:
+      - workflows
+      - workflowtemplates
+      - cronworkflows
+      - clusterworkflowtemplates
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - update
+      - patch
+      - delete
+  
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+      - pods/log
+    verbs:
+      - get
+      - list
+      - watch
+  
+  - apiGroups:
+      - ""
+    resources:
+      - configmaps
+    verbs:
+      - get
+      - list
+      - watch
+
+---
+# RoleBinding: Bind workflow-executor to workflow-creator
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: workflow-executor-binding
+  namespace: argo-workflows
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: workflow-creator
+subjects:
+  - kind: ServiceAccount
+    name: workflow-executor
+    namespace: argo-workflows
+
+---
+# Role: Allow Argo Events to trigger Workflows
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: argo-events-workflow-trigger
+  namespace: argo-workflows
+rules:
+  - apiGroups:
+      - argoproj.io
+    resources:
+      - workflows
+      - workflowtemplates
+    verbs:
+      - get
+      - list
+      - create
+      - update
+
+---
+# RoleBinding: Allow Events to create Workflows
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: argo-events-workflow-trigger-binding
+  namespace: argo-workflows
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: argo-events-workflow-trigger
+subjects:
+  - kind: ServiceAccount
+    name: argo-events-sa
+    namespace: argo-events
+
+---
+# ClusterRole: Allow reading ApplicationSets (for integration)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: applicationset-reader
+rules:
+  - apiGroups:
+      - argoproj.io
+    resources:
+      - applications
+      - applicationsets
+    verbs:
+      - get
+      - list
+      - watch
+
+---
+# ClusterRoleBinding: Bind workflow-executor to applicationset-reader
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: workflow-executor-applicationset-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: applicationset-reader
+subjects:
+  - kind: ServiceAccount
+    name: workflow-executor
+    namespace: argo-workflows

@@ -1,0 +1,190 @@
+# Example: Advanced Multi-Route Configuration
+# Multiple routing rules with headers, cookies, and query params
+# File: services/myapp/values-prod.yaml
+
+# ================================================
+# STANDARD SERVICE CONFIGURATION
+# ================================================
+environment: prod
+region: us-east-1
+
+replicaCount: 3
+
+image:
+  repository: myregistry/myapp
+  pullPolicy: IfNotPresent
+  tag: "v2.5.0"
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+# ================================================
+# ISTIO ADVANCED ROUTING
+# ================================================
+cw-istio:
+  enabled: true
+  
+  # VirtualService with complex routing rules
+  virtualService:
+    enabled: true
+    
+    hosts:
+      - "myapp.example.com"
+      - "api.example.com"
+    
+    gateways:
+      - "istio-system/platform-gateway"
+    
+    http:
+      # Route 1: Beta users get new version (header-based routing)
+      - match:
+          - headers:
+              x-beta-user:
+                exact: "true"
+        route:
+          - destination:
+              port: 80
+              subset: beta
+        headers:
+          request:
+            set:
+              x-routed-to: "beta"
+      
+      # Route 2: Mobile app gets optimized version (user-agent routing)
+      - match:
+          - headers:
+              user-agent:
+                regex: ".*Mobile.*|.*Android.*|.*iOS.*"
+        route:
+          - destination:
+              port: 80
+              subset: mobile
+        timeout: 20s
+        headers:
+          request:
+            set:
+              x-routed-to: "mobile"
+      
+      # Route 3: API v2 with query parameter
+      - match:
+          - uri:
+              prefix: "/api"
+            queryParams:
+              version:
+                exact: "2"
+        route:
+          - destination:
+              port: 80
+              subset: v2
+        timeout: 30s
+      
+      # Route 4: Admin routes (require specific cookie)
+      - match:
+          - uri:
+              prefix: "/admin"
+            headers:
+              cookie:
+                regex: ".*session=admin.*"
+        route:
+          - destination:
+              port: 80
+        timeout: 60s
+        headers:
+          request:
+            set:
+              x-admin-access: "true"
+      
+      # Route 5: Health checks (no retry)
+      - match:
+          - uri:
+              exact: "/health"
+          - uri:
+              exact: "/ready"
+        route:
+          - destination:
+              port: 80
+        timeout: 5s
+      
+      # Route 6: Static assets (long timeout, caching headers)
+      - match:
+          - uri:
+              prefix: "/static"
+          - uri:
+              prefix: "/assets"
+        route:
+          - destination:
+              port: 80
+        timeout: 120s
+        headers:
+          response:
+            set:
+              cache-control: "public, max-age=3600"
+      
+      # Default route
+      - route:
+          - destination:
+              port: 80
+              subset: stable
+        timeout: 30s
+  
+  # DestinationRule with multiple subsets
+  destinationRule:
+    enabled: true
+    
+    trafficPolicy:
+      loadBalancer:
+        simple: ROUND_ROBIN
+      connectionPool:
+        tcp:
+          maxConnections: 100
+        http:
+          http1MaxPendingRequests: 50
+          http2MaxRequests: 100
+      outlierDetection:
+        consecutiveErrors: 5
+        interval: 30s
+        baseEjectionTime: 30s
+    
+    # Define multiple subsets for routing
+    subsets:
+      - name: stable
+        labels:
+          version: v1
+      
+      - name: beta
+        labels:
+          version: v2-beta
+        trafficPolicy:
+          # Beta might have different connection limits
+          connectionPool:
+            tcp:
+              maxConnections: 50
+      
+      - name: mobile
+        labels:
+          variant: mobile-optimized
+      
+      - name: v2
+        labels:
+          api-version: v2
+
+# ================================================
+# POD LABELS
+# ================================================
+podLabels:
+  version: v1
+  variant: standard
+  api-version: v1
+
+# ================================================
+# RESOURCES
+# ================================================
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 250m
+    memory: 256Mi

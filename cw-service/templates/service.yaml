@@ -1,0 +1,64 @@
+{{/*
+=============================================================================
+KUBERNETES RESOURCE: Service
+=============================================================================
+Purpose: Expose Deployment pods via stable network endpoint
+Type: ClusterIP (internal), LoadBalancer, or NodePort
+Naming: Uses cw-service.fullname for DNS resolution
+
+Port Configuration:
+  - Multi-port mode: service.ports array (HTTP, HTTPS, gRPC)
+  - Single port mode: service.port (backward compatible)
+
+Service Discovery:
+  DNS: <service-name>.<namespace>.svc.cluster.local
+  Selector: Routes traffic to pods matching selectorLabels
+*/}}
+apiVersion: v1
+kind: Service
+metadata:
+  {{/* Service name - used for DNS and Istio routing */}}
+  name: {{ include "cw-service.fullname" . }}
+  labels:
+    {{- include "cw-service.labels" . | nindent 4 }}
+spec:
+  {{/* Service type: ClusterIP (default), LoadBalancer, NodePort */}}
+  type: {{ .Values.service.type }}
+  ports:
+    {{- if .Values.service.ports }}
+    {{/*
+    =================================================================
+    MULTI-PORT CONFIGURATION
+    =================================================================
+    Define multiple ports for different protocols
+    Each port has: name, port (service), targetPort (pod), protocol
+    Port names are used in HTTPRoute and VirtualService
+    */}}
+    {{- range .Values.service.ports }}
+    - port: {{ .port }}
+      targetPort: {{ .name }}
+      protocol: {{ .protocol | default "TCP" }}
+      name: {{ .name }}
+    {{- end }}
+    {{- else }}
+    {{/*
+    =================================================================
+    SINGLE PORT CONFIGURATION (Backward Compatible)
+    =================================================================
+    Default HTTP port mapping
+    Targets the 'http' named port in Deployment
+    */}}
+    - port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+    {{- end }}
+  {{/*
+  ===================================================================
+  POD SELECTOR
+  ===================================================================
+  Routes traffic to pods with matching labels
+  MUST match Deployment spec.template.metadata.labels
+  */}}
+  selector:
+    {{- include "cw-service.selectorLabels" . | nindent 4 }}

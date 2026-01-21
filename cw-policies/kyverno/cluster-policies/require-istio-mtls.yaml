@@ -1,0 +1,34 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-istio-mtls
+  labels:
+    policy.kyverno.io/severity: high
+    policy.kyverno.io/category: security
+  annotations:
+    policies.kyverno.io/title: Require Istio mTLS
+    policies.kyverno.io/description: >-
+      Enforces mTLS for all services in production using Istio service mesh.
+      Ensures encrypted service-to-service communication.
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+  - name: require-peer-authentication-prod
+    match:
+      any:
+      - resources:
+          kinds:
+          - Service
+          namespaces:
+          - prod
+    validate:
+      message: >-
+        Production services must have a corresponding PeerAuthentication resource
+        enforcing STRICT mTLS mode. Enable Istio subchart: cw-istio.enabled: true
+        and set cw-istio.peerAuthentication.mtls.mode: STRICT
+      deny:
+        conditions:
+          any:
+          - key: "{{ request.object.metadata.labels.\"service.istio.io/canonical-name\" }}"
+            operator: NotExists

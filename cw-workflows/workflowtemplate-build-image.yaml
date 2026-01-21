@@ -1,0 +1,128 @@
+# WorkflowTemplate: Build and Push Container Image
+# Reusable template for building Docker images using Kaniko
+
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: build-push-image
+  namespace: argo-workflows
+spec:
+  # Service account with registry credentials
+  serviceAccountName: workflow-executor
+  
+  # Input parameters
+  arguments:
+    parameters:
+      - name: git-repo
+        value: "https://github.com/YOUR_ORG/gitops-platform.git"
+      - name: git-revision
+        value: "main"
+      - name: service-name
+        value: "nginx"
+      - name: dockerfile-path
+        value: "services/{{workflow.parameters.service-name}}/Dockerfile"
+      - name: image-repository
+        value: "YOUR_REGISTRY/{{workflow.parameters.service-name}}"
+      - name: image-tag
+        value: "{{workflow.uid}}"
+      - name: build-args
+        value: ""
+  
+  entrypoint: build-and-push
+  
+  templates:
+    # Main workflow
+    - name: build-and-push
+      dag:
+        tasks:
+          # Clone repository
+          - name: clone-repo
+            template: git-clone
+          
+          # Build image with Kaniko
+          - name: build-image
+            template: kaniko-build
+            depends: "clone-repo"
+          
+          # Tag as latest (optional)
+          - name: tag-latest
+            template: tag-image-latest
+            depends: "build-image"
+    
+    # Clone Git repository
+    - name: git-clone
+      container:
+        image: alpine/git:latest
+        command: [sh, -c]
+        args:
+          - |
+            git clone {{workflow.parameters.git-repo}} /workspace
+            cd /workspace
+            git checkout {{workflow.parameters.git-revision}}
+        volumeMounts:
+          - name: workspace
+            mountPath: /workspace
+      
+      outputs:
+        artifacts:
+          - name: source-code
+            path: /workspace
+    
+    # Build with Kaniko (no Docker daemon required)
+    - name: kaniko-build
+      inputs:
+        artifacts:
+          - name: source-code
+            path: /workspace
+      
+      container:
+        image: gcr.io/kaniko-project/executor:v1.19.0
+        command: ["/kaniko/executor"]
+        args:
+          - --context=/workspace
+          - --dockerfile=/workspace/{{workflow.parameters.dockerfile-path}}
+          - --destination={{workflow.parameters.image-repository}}:{{workflow.parameters.image-tag}}
+          - --cache=true
+          - --cache-ttl=24h
+          - --compressed-caching=false
+          - --snapshot-mode=redo
+          - --build-arg={{workflow.parameters.build-args}}
+        
+        volumeMounts:
+          - name: workspace
+            mountPath: /workspace
+          - name: docker-config
+            mountPath: /kaniko/.docker
+      
+      outputs:
+        parameters:
+          - name: image-digest
+            valueFrom:
+              path: /kaniko/.docker/digest
+    
+    # Tag image as latest
+    - name: tag-image-latest
+      container:
+        image: gcr.io/go-containerregistry/crane:latest
+        command: [crane]
+        args:
+          - tag
+          - "{{workflow.parameters.image-repository}}:{{workflow.parameters.image-tag}}"
+          - latest
+  
+  # Volumes
+  volumes:
+    - name: workspace
+      emptyDir: {}
+    
+    # Docker registry credentials
+    # kubectl create secret docker-registry regcred -n argo-workflows \
+    #   --docker-server=YOUR_REGISTRY \
+    #   --docker-username=YOUR_USERNAME \
+    #   --docker-password=YOUR_PASSWORD
+    - name: docker-config
+      secret:
+        secretName: regcred
+        items:
+          - key: .dockerconfigjson
+            path: config.json

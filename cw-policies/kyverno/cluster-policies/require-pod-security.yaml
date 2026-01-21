@@ -1,0 +1,99 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-pod-security
+  labels:
+    policy.kyverno.io/severity: high
+    policy.kyverno.io/category: security
+  annotations:
+    policies.kyverno.io/title: Pod Security Standards
+    policies.kyverno.io/description: >-
+      Enforces pod security best practices in production environments:
+      - Run as non-root user
+      - Read-only root filesystem
+      - No privilege escalation
+      - Drop all capabilities
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+  - name: require-non-root-user-prod
+    match:
+      any:
+      - resources:
+          kinds:
+          - Deployment
+          - Rollout
+          - Pod
+          namespaces:
+          - prod
+    validate:
+      message: "Production pods must run as non-root user"
+      pattern:
+        spec:
+          =(template):
+            spec:
+              securityContext:
+                runAsNonRoot: true
+  
+  - name: disallow-privilege-escalation-prod
+    match:
+      any:
+      - resources:
+          kinds:
+          - Deployment
+          - Rollout
+          - Pod
+          namespaces:
+          - prod
+    validate:
+      message: "Privilege escalation is not allowed in production"
+      pattern:
+        spec:
+          =(template):
+            spec:
+              containers:
+              - securityContext:
+                  allowPrivilegeEscalation: false
+  
+  - name: require-drop-all-capabilities-prod
+    match:
+      any:
+      - resources:
+          kinds:
+          - Deployment
+          - Rollout
+          - Pod
+          namespaces:
+          - prod
+    validate:
+      message: "All capabilities must be dropped in production"
+      pattern:
+        spec:
+          =(template):
+            spec:
+              containers:
+              - securityContext:
+                  capabilities:
+                    drop:
+                    - ALL
+  
+  - name: require-read-only-root-filesystem-prod
+    match:
+      any:
+      - resources:
+          kinds:
+          - Deployment
+          - Rollout
+          - Pod
+          namespaces:
+          - prod
+    validate:
+      message: "Root filesystem must be read-only in production"
+      pattern:
+        spec:
+          =(template):
+            spec:
+              containers:
+              - securityContext:
+                  readOnlyRootFilesystem: true

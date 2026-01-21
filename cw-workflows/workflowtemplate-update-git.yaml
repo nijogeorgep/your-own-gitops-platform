@@ -1,0 +1,171 @@
+# WorkflowTemplate: Update Git Values Files
+# Updates service values files with new image tags and commits to Git
+
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: update-git-values
+  namespace: argo-workflows
+spec:
+  serviceAccountName: workflow-executor
+  
+  arguments:
+    parameters:
+      - name: git-repo
+        value: "https://github.com/YOUR_ORG/gitops-platform.git"
+      - name: git-branch
+        value: "main"
+      - name: service-name
+        value: "nginx"
+      - name: environment
+        value: "dev"
+      - name: new-image-tag
+        value: ""
+      - name: git-username
+        value: "argo-workflows"
+      - name: git-email
+        value: "argo-workflows@gitops-platform.local"
+  
+  entrypoint: update-and-commit
+  
+  templates:
+    - name: update-and-commit
+      dag:
+        tasks:
+          # Clone repository
+          - name: clone
+            template: git-clone
+          
+          # Update values file
+          - name: update-values
+            template: update-image-tag
+            depends: "clone"
+          
+          # Commit and push
+          - name: commit-push
+            template: git-commit-push
+            depends: "update-values"
+    
+    # Clone repository
+    - name: git-clone
+      container:
+        image: alpine/git:latest
+        command: [sh, -c]
+        args:
+          - |
+            # Configure Git credentials
+            git config --global credential.helper store
+            echo "https://{{workflow.parameters.git-username}}:$GIT_TOKEN@github.com" > ~/.git-credentials
+            
+            # Clone repository
+            git clone {{workflow.parameters.git-repo}} /workspace
+            cd /workspace
+            git checkout {{workflow.parameters.git-branch}}
+            
+            echo "Repository cloned successfully"
+        
+        env:
+          - name: GIT_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: git-credentials
+                key: token
+        
+        volumeMounts:
+          - name: workspace
+            mountPath: /workspace
+    
+    # Update values file with new image tag
+    - name: update-image-tag
+      script:
+        image: mikefarah/yq:4
+        command: [sh]
+        source: |
+          #!/bin/sh
+          set -e
+          
+          SERVICE="{{workflow.parameters.service-name}}"
+          ENV="{{workflow.parameters.environment}}"
+          NEW_TAG="{{workflow.parameters.new-image-tag}}"
+          VALUES_FILE="/workspace/services/${SERVICE}/values-${ENV}.yaml"
+          
+          echo "Updating ${VALUES_FILE}"
+          echo "New image tag: ${NEW_TAG}"
+          
+          # Check if file exists
+          if [ ! -f "$VALUES_FILE" ]; then
+            echo "ERROR: Values file not found: $VALUES_FILE"
+            exit 1
+          fi
+          
+          # Update image tag using yq
+          yq eval ".image.tag = \"${NEW_TAG}\"" -i "$VALUES_FILE"
+          
+          # Verify update
+          UPDATED_TAG=$(yq eval '.image.tag' "$VALUES_FILE")
+          echo "Updated tag in file: $UPDATED_TAG"
+          
+          if [ "$UPDATED_TAG" != "$NEW_TAG" ]; then
+            echo "ERROR: Tag update failed"
+            exit 1
+          fi
+          
+          echo "Values file updated successfully"
+        
+        volumeMounts:
+          - name: workspace
+            mountPath: /workspace
+    
+    # Commit and push changes
+    - name: git-commit-push
+      container:
+        image: alpine/git:latest
+        command: [sh, -c]
+        args:
+          - |
+            cd /workspace
+            
+            # Configure Git
+            git config --global user.name "{{workflow.parameters.git-username}}"
+            git config --global user.email "{{workflow.parameters.git-email}}"
+            git config --global credential.helper store
+            echo "https://{{workflow.parameters.git-username}}:$GIT_TOKEN@github.com" > ~/.git-credentials
+            
+            # Check for changes
+            if git diff --quiet; then
+              echo "No changes to commit"
+              exit 0
+            fi
+            
+            # Stage changes
+            git add services/{{workflow.parameters.service-name}}/values-{{workflow.parameters.environment}}.yaml
+            
+            # Commit
+            COMMIT_MSG="chore: update {{workflow.parameters.service-name}} image tag to {{workflow.parameters.new-image-tag}}
+
+            Environment: {{workflow.parameters.environment}}
+            Automated by Argo Workflows
+            Workflow: {{workflow.name}}"
+            
+            git commit -m "$COMMIT_MSG"
+            
+            # Push
+            git push origin {{workflow.parameters.git-branch}}
+            
+            echo "Changes committed and pushed successfully"
+        
+        env:
+          - name: GIT_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: git-credentials
+                key: token
+        
+        volumeMounts:
+          - name: workspace
+            mountPath: /workspace
+  
+  # Volumes
+  volumes:
+    - name: workspace
+      emptyDir: {}

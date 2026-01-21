@@ -1,0 +1,76 @@
+# Example: Basic Istio Traffic Routing
+# File: services/myapp/values-prod.yaml
+
+# ================================================
+# STANDARD SERVICE CONFIGURATION
+# ================================================
+environment: prod
+region: us-east-1
+
+replicaCount: 3
+
+image:
+  repository: myregistry/myapp
+  pullPolicy: IfNotPresent
+  tag: "v1.0.0"
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+# ================================================
+# ISTIO SERVICE MESH - BASIC ROUTING
+# ================================================
+cw-istio:
+  enabled: true
+  
+  # VirtualService for HTTP routing
+  virtualService:
+    enabled: true
+    
+    # Domains this service responds to
+    hosts:
+      - "myapp.example.com"
+      - "myapp-prod.example.com"
+    
+    # Reference to Istio Gateway (created separately)
+    gateways:
+      - "istio-system/platform-gateway"
+    
+    # HTTP routing rules
+    http:
+      - match:
+          - uri:
+              prefix: "/api"
+        route:
+          - destination:
+              port: 80
+            weight: 100
+        # Request timeout
+        timeout: 30s
+        # Retry policy
+        retries:
+          attempts: 3
+          perTryTimeout: 10s
+          retryOn: "5xx,reset,connect-failure,refused-stream"
+
+# ================================================
+# RESOURCES
+# ================================================
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 250m
+    memory: 256Mi
+
+# ================================================
+# AUTOSCALING
+# ================================================
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70

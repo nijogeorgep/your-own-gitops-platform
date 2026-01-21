@@ -1,0 +1,122 @@
+{{/*
+=============================================================================
+KUBERNETES RESOURCE: HorizontalPodAutoscaler (HPA)
+=============================================================================
+Purpose: Automatically scale Deployment replicas based on resource metrics
+API Version: autoscaling/v2 (latest stable)
+Condition: Only created when autoscaling.enabled=true
+
+Metrics Supported:
+  - CPU utilization percentage
+  - Memory utilization percentage
+  - Custom metrics (via metrics server)
+
+Behavior:
+  - Scales UP when metrics exceed target
+  - Scales DOWN when metrics below target
+  - Respects minReplicas and maxReplicas boundaries
+  - Compatible with Argo Rollouts for canary deployments
+
+Important: When enabled, removes static replicaCount from Deployment
+*/}}
+{{- if .Values.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  {{/* HPA name matches Deployment for easy correlation */}}
+  name: {{ include "cw-service.fullname" . }}
+  labels:
+    {{- include "cw-service.labels" . | nindent 4 }}
+spec:
+  {{/*
+  ===================================================================
+  SCALE TARGET
+  ===================================================================
+  References the Deployment or Rollout to scale
+  Automatically switches based on cw-rollout.enabled flag
+  */}}
+  scaleTargetRef:
+    {{- if .Values.cw-rollout.enabled }}
+    {{/* Reference Argo Rollout for progressive delivery */}}
+    apiVersion: argoproj.io/v1alpha1
+    kind: Rollout
+    {{- else }}
+    {{/* Reference standard Deployment */}}
+    apiVersion: apps/v1
+    kind: Deployment
+    {{- end }}
+    name: {{ include "cw-service.fullname" . }}
+  {{/* Minimum replicas - never scale below this */}}
+  minReplicas: {{ .Values.autoscaling.minReplicas }}
+  {{/* Maximum replicas - never scale above this */}}
+  maxReplicas: {{ .Values.autoscaling.maxReplicas }}
+  
+  {{/*
+  ===================================================================
+  SCALING BEHAVIOR
+  ===================================================================
+  Controls how fast the HPA scales up/down
+  Prevents flapping and aggressive scaling
+  */}}
+  {{- with .Values.autoscaling.behavior }}
+  behavior:
+    {{- toYaml . | nindent 4 }}
+  {{- else }}
+  {{/* Default behavior if not specified */}}
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300  # Wait 5 minutes before scaling down
+      policies:
+      - type: Percent
+        value: 50  # Scale down by max 50% of current replicas
+        periodSeconds: 60  # Every 60 seconds
+      - type: Pods
+        value: 2  # Scale down by max 2 pods
+        periodSeconds: 60  # Every 60 seconds
+      selectPolicy: Min  # Use the policy that scales down the least
+    scaleUp:
+      stabilizationWindowSeconds: 0  # Scale up immediately
+      policies:
+      - type: Percent
+        value: 100  # Scale up by max 100% of current replicas
+        periodSeconds: 60  # Every 60 seconds
+      - type: Pods
+        value: 4  # Scale up by max 4 pods
+        periodSeconds: 60  # Every 60 seconds
+      selectPolicy: Max  # Use the policy that scales up the most
+  {{- end }}
+  
+  metrics:
+    {{- if .Values.autoscaling.targetCPUUtilizationPercentage }}
+    {{/*
+    =================================================================
+    CPU UTILIZATION METRIC
+    =================================================================
+    Triggers scaling when average CPU across pods exceeds target
+    Value: Percentage (e.g., 80 = 80% of requested CPU)
+    Requires: CPU requests defined in Deployment resources
+    */}}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.autoscaling.targetMemoryUtilizationPercentage }}
+    {{/*
+    =================================================================
+    MEMORY UTILIZATION METRIC
+    =================================================================
+    Triggers scaling when average memory across pods exceeds target
+    Value: Percentage (e.g., 80 = 80% of requested memory)
+    Requires: Memory requests defined in Deployment resources
+    */}}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+{{- end }}

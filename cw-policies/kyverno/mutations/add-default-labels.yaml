@@ -1,0 +1,42 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: add-default-labels
+  labels:
+    policy.kyverno.io/severity: low
+    policy.kyverno.io/category: best-practices
+  annotations:
+    policies.kyverno.io/title: Add Default Platform Labels
+    policies.kyverno.io/description: >-
+      Automatically adds missing platform labels to resources.
+      Ensures all resources have standard labels for observability and governance.
+spec:
+  background: true
+  rules:
+  - name: add-managed-by-label
+    match:
+      any:
+      - resources:
+          kinds:
+          - Deployment
+          - Rollout
+          - Service
+          - ConfigMap
+    mutate:
+      patchStrategicMerge:
+        metadata:
+          labels:
+            +(app.kubernetes.io/managed-by): "helm"
+  
+  - name: add-part-of-label
+    match:
+      any:
+      - resources:
+          kinds:
+          - Deployment
+          - Rollout
+    mutate:
+      patchStrategicMerge:
+        metadata:
+          labels:
+            +(app.kubernetes.io/part-of): "gitops-platform"

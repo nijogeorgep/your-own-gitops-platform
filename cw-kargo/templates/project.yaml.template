@@ -1,0 +1,13 @@
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Project
+metadata:
+  name: {{SERVICE_NAME}}
+  labels:
+    app.kubernetes.io/name: {{SERVICE_NAME}}
+    app.kubernetes.io/component: kargo-project
+spec:
+  promotionPolicies:
+  - stage: {{SERVICE_NAME}}-staging-{{REGION}}
+    autoPromotionEnabled: true   # Auto-promote dev → staging
+  - stage: {{SERVICE_NAME}}-prod-{{REGION}}
+    autoPromotionEnabled: false  # Manual approval for staging → prod

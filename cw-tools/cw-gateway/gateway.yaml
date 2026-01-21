@@ -1,0 +1,33 @@
+# Platform Gateway - Single entry point for all UIs
+# Creates a LoadBalancer service in istio-ingress namespace
+
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: platform-gateway
+  namespace: istio-system
+  labels:
+    app: platform-gateway
+    managed-by: gitops-platform
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  # HTTP server
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - "*"
+  
+  # Uncomment for HTTPS support (requires cert-manager certificate)
+  # - port:
+  #     number: 443
+  #     name: https
+  #     protocol: HTTPS
+  #   tls:
+  #     mode: SIMPLE
+  #     credentialName: platform-tls-cert  # Certificate secret name
+  #   hosts:
+  #   - "platform.example.com"

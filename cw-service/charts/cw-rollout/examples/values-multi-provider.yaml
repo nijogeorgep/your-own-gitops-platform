@@ -1,0 +1,197 @@
+# Example: Canary with multi-provider analysis (Prometheus + New Relic + Webhook)
+# File: services/myapp/values-prod.yaml
+
+# ================================================
+# STANDARD SERVICE CONFIGURATION
+# ================================================
+environment: prod
+region: us-east-1
+
+replicaCount: 5
+
+image:
+  repository: myregistry/myapp
+  pullPolicy: IfNotPresent
+  tag: "v3.1.0"
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+# ================================================
+# PROGRESSIVE DELIVERY - MULTI-PROVIDER ANALYSIS
+# ================================================
+cw-rollout:
+  enabled: true
+  
+  rollout:
+    strategy: canary
+    revisionHistoryLimit: 5
+    
+    canary:
+      steps:
+        # Stage 1: 10% with basic health check
+        - setWeight: 10
+        - pause: {duration: 3m}
+        - analysis:
+            templates:
+              - templateName: webhook-health-check
+        
+        # Stage 2: 25% with infrastructure metrics
+        - setWeight: 25
+        - pause: {duration: 5m}
+        - analysis:
+            templates:
+              - templateName: prometheus-success-rate
+              - templateName: prometheus-error-rate
+              - templateName: webhook-health-check
+        
+        # Stage 3: 50% with full validation
+        - setWeight: 50
+        - pause: {duration: 10m}
+        - analysis:
+            templates:
+              - templateName: prometheus-success-rate
+              - templateName: prometheus-latency-p95
+              - templateName: newrelic-apdex
+              - templateName: webhook-business-metrics
+
+  # ================================================
+  # PROMETHEUS (Infrastructure Metrics)
+  # ================================================
+  analysisTemplates:
+    prometheus:
+      enabled: true
+      address: http://prometheus.monitoring:9090
+      
+      queries:
+        successRate:
+          enabled: true
+          query: |
+            sum(rate(http_requests_total{job="myapp-prod-us-east-1",code=~"2.."}[5m])) /
+            sum(rate(http_requests_total{job="myapp-prod-us-east-1"}[5m]))
+          threshold: 0.95
+          interval: 1m
+          count: 5
+        
+        errorRate:
+          enabled: true
+          query: |
+            sum(rate(http_requests_total{job="myapp-prod-us-east-1",code=~"5.."}[5m])) /
+            sum(rate(http_requests_total{job="myapp-prod-us-east-1"}[5m]))
+          threshold: 0.05
+          interval: 1m
+          count: 5
+        
+        latency:
+          enabled: true
+          query: |
+            histogram_quantile(0.95,
+              sum(rate(http_request_duration_seconds_bucket{job="myapp-prod-us-east-1"}[5m])) by (le)
+            ) * 1000
+          threshold: 500
+          interval: 1m
+          count: 5
+
+  # ================================================
+  # NEW RELIC (APM Metrics)
+  # ================================================
+    newrelic:
+      enabled: true
+      
+      apiKey:
+        secretName: newrelic-credentials
+        secretKey: api-key
+      
+      accountId: "1234567"
+      region: us
+      
+      queries:
+        apdex:
+          enabled: true
+          nrql: "FROM Transaction SELECT apdex(duration, t: 0.5) WHERE appName = 'myapp-prod' SINCE 5 minutes ago"
+          threshold: 0.90  # Min 0.90 Apdex score
+          interval: 1m
+          count: 5
+        
+        errorPercentage:
+          enabled: true
+          nrql: "FROM Transaction SELECT percentage(count(*), WHERE error IS true) WHERE appName = 'myapp-prod' SINCE 5 minutes ago"
+          threshold: 5  # Max 5% errors
+          interval: 1m
+          count: 5
+
+  # ================================================
+  # WEBHOOK (Custom Business Metrics)
+  # ================================================
+    webhook:
+      enabled: true
+      
+      webhooks:
+        # Basic health check endpoint
+        health:
+          enabled: true
+          url: https://myapp-prod.example.com/health
+          method: GET
+          headers:
+            - key: X-Health-Check
+              value: "true"
+          jsonPath: "{$.status}"
+          successCondition: "result == 'healthy'"
+          timeoutSeconds: 5
+        
+        # Business metrics validation
+        businessMetrics:
+          enabled: true
+          url: https://analytics-api.example.com/validate
+          method: POST
+          headers:
+            - key: Authorization
+              value: "Bearer {{ .Values.analyticsToken }}"
+            - key: Content-Type
+              value: "application/json"
+          body: |
+            {
+              "service": "myapp",
+              "environment": "prod",
+              "version": "{{ .Values.image.tag }}",
+              "region": "us-east-1",
+              "window": "5m"
+            }
+          jsonPath: "{$.metrics.conversion_rate}"
+          successCondition: "result >= 0.85"  # Min 85% conversion rate
+          timeoutSeconds: 10
+
+# ================================================
+# GATEWAY API HTTPROUTE
+# ================================================
+httpRoute:
+  enabled: true
+  parentRefs:
+    - name: gateway
+      namespace: istio-system
+  
+  rules:
+    - matches:
+      - path:
+          type: PathPrefix
+          value: /
+
+# ================================================
+# SECRETS (Use External Secrets Operator in production)
+# ================================================
+# Example:
+# apiVersion: external-secrets.io/v1beta1
+# kind: ExternalSecret
+# metadata:
+#   name: newrelic-credentials
+# spec:
+#   secretStoreRef:
+#     name: vault-backend
+#   target:
+#     name: newrelic-credentials
+#   data:
+#     - secretKey: api-key
+#       remoteRef:
+#         key: newrelic/api-key

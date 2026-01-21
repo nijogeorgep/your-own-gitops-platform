@@ -1,0 +1,55 @@
+# Example: Fast Rollout for Development Environment
+# Use this pattern in services/<your-service>/values-dev.yaml
+
+# Standard deployment configuration
+environment: dev
+region: us-east-1
+replicaCount: 1
+
+image:
+  repository: your-registry.io/myapp
+  tag: "latest"  # Use latest for dev
+
+# Enable Argo Rollout (faster progression for dev)
+cw-rollout:
+  enabled: true
+  
+  rollout:
+    strategy: canary
+    
+    canary:
+      # Fast rollout for development (5 minutes total)
+      steps:
+        - setWeight: 50    # Jump to 50% quickly in dev
+        - pause:
+            duration: 2m   # Short pause
+        
+        # Goes to 100% automatically
+      
+      maxSurge: 1
+      maxUnavailable: 0
+
+# No autoscaling in dev
+autoscaling:
+  enabled: false
+
+# Enable HTTPRoute for testing traffic splitting
+httpRoute:
+  enabled: true
+  parentRefs:
+    - name: platform-gateway
+      namespace: istio-system
+  rules:
+    - matches:
+      - path:
+          type: PathPrefix
+          value: /myapp-dev
+
+# Minimal resources for dev
+resources:
+  limits:
+    cpu: 100m
+    memory: 128Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi

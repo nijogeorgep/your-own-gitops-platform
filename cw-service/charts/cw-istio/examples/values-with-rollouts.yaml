@@ -1,0 +1,181 @@
+# Example: Istio + Argo Rollouts Integration
+# Progressive canary deployment with Istio traffic splitting
+# File: services/myapp/values-prod.yaml
+
+# ================================================
+# STANDARD SERVICE CONFIGURATION
+# ================================================
+environment: prod
+region: us-east-1
+
+replicaCount: 5
+
+image:
+  repository: myregistry/myapp
+  pullPolicy: IfNotPresent
+  tag: "v3.0.0"
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+# ================================================
+# ISTIO SERVICE MESH
+# ================================================
+cw-istio:
+  enabled: true
+  
+  # VirtualService for traffic routing
+  # Note: Argo Rollouts will automatically manage traffic weights
+  virtualService:
+    enabled: true
+    
+    hosts:
+      - "myapp.example.com"
+    
+    gateways:
+      - "istio-system/platform-gateway"
+    
+    http:
+      - match:
+          - uri:
+              prefix: "/"
+        route:
+          - destination:
+              port: 80
+              # Rollouts creates: stable and canary services
+        timeout: 30s
+        retries:
+          attempts: 3
+          perTryTimeout: 10s
+  
+  # DestinationRule for resilience
+  destinationRule:
+    enabled: true
+    
+    trafficPolicy:
+      loadBalancer:
+        consistentHash:
+          httpHeaderName: "x-session-id"
+      
+      connectionPool:
+        tcp:
+          maxConnections: 200
+        http:
+          http1MaxPendingRequests: 100
+          http2MaxRequests: 200
+      
+      outlierDetection:
+        consecutiveErrors: 5
+        interval: 30s
+        baseEjectionTime: 30s
+        maxEjectionPercent: 50
+  
+  # mTLS for security
+  peerAuthentication:
+    enabled: true
+    mtlsMode: STRICT
+
+# ================================================
+# ARGO ROLLOUTS WITH ISTIO TRAFFIC ROUTING
+# ================================================
+cw-rollout:
+  enabled: true
+  
+  rollout:
+    strategy: canary
+    revisionHistoryLimit: 5
+    
+    canary:
+      # Gradual traffic progression
+      steps:
+        - setWeight: 10
+        - pause: {duration: 5m}
+        - analysis:
+            templates:
+              - templateName: prometheus-success-rate
+        
+        - setWeight: 25
+        - pause: {duration: 10m}
+        - analysis:
+            templates:
+              - templateName: prometheus-success-rate
+              - templateName: prometheus-latency-p95
+        
+        - setWeight: 50
+        - pause: {duration: 15m}
+        - analysis:
+            templates:
+              - templateName: prometheus-success-rate
+              - templateName: prometheus-latency-p95
+  
+  # Prometheus analysis templates
+  analysisTemplates:
+    prometheus:
+      enabled: true
+      address: http://prometheus.monitoring:9090
+      
+      queries:
+        successRate:
+          enabled: true
+          query: |
+            sum(rate(
+              istio_requests_total{
+                destination_service_name=~"myapp-prod-us-east-1.*",
+                response_code=~"2.."
+              }[5m]
+            )) /
+            sum(rate(
+              istio_requests_total{
+                destination_service_name=~"myapp-prod-us-east-1.*"
+              }[5m]
+            ))
+          threshold: 0.95
+          interval: 1m
+          count: 5
+        
+        latency:
+          enabled: true
+          query: |
+            histogram_quantile(0.95,
+              sum(rate(
+                istio_request_duration_milliseconds_bucket{
+                  destination_service_name=~"myapp-prod-us-east-1.*"
+                }[5m]
+              )) by (le)
+            )
+          threshold: 500
+          interval: 1m
+          count: 5
+
+# ================================================
+# AUTOSCALING
+# ================================================
+autoscaling:
+  enabled: true
+  minReplicas: 5
+  maxReplicas: 20
+  targetCPUUtilizationPercentage: 70
+
+# ================================================
+# RESOURCES
+# ================================================
+resources:
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+  requests:
+    cpu: 500m
+    memory: 512Mi
+
+# ================================================
+# NOTES
+# ================================================
+# Traffic flow:
+# 1. External request → Istio Ingress Gateway
+# 2. Gateway → VirtualService (routing rules)
+# 3. VirtualService → Canary/Stable services (weighted by Argo Rollouts)
+# 4. Services → Pods (with Envoy sidecar)
+# 5. DestinationRule applies circuit breaking and load balancing
+# 6. PeerAuthentication enforces mTLS between services

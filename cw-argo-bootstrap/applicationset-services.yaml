@@ -1,0 +1,80 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: platform-services
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  
+  # Optimize for scale - preserves Applications when ApplicationSet deleted
+  syncPolicy:
+    preserveResourcesOnDeletion: false
+  
+  generators:
+    # Matrix generator for multi-environment deployment
+    # Combines each service with each environment
+    - matrix:
+        generators:
+          # First generator: Discover all services from Git
+          - git:
+              repoURL: https://github.com/YOUR_ORG/gitops-platform.git  # TODO: Update with your Git repo URL
+              revision: main
+              directories:
+                - path: services/*
+              # Optimize for scale: Refresh every 5 minutes instead of default 3
+              # For webhook-based updates, increase to 10+ minutes
+              requeueAfterSeconds: 300
+          
+          # Second generator: List of environments
+          - list:
+              elements:
+                - env: dev
+                  namespace: dev
+                  syncPolicy: automated
+                - env: staging
+                  namespace: staging
+                  syncPolicy: automated
+                - env: prod
+                  namespace: prod
+                  syncPolicy: manual  # Manual sync for production
+  
+  # Template for generating ArgoCD Applications
+  template:
+    metadata:
+      name: '{{.path.basename}}-{{.env}}'
+      labels:
+        service: '{{.path.basename}}'
+        environment: '{{.env}}'
+        managed-by: applicationset
+    spec:
+      project: default
+      
+      source:
+        repoURL: https://github.com/YOUR_ORG/gitops-platform.git  # TODO: Update with your Git repo URL
+        targetRevision: main
+        path: cw-service
+        helm:
+          valueFiles:
+            - ../services/{{.path.basename}}/base-values.yaml
+            - ../services/{{.path.basename}}/values-{{.env}}.yaml
+      
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{.namespace}}'
+      
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+          allowEmpty: false
+        syncOptions:
+          - CreateNamespace=true
+          - PrunePropagationPolicy=foreground
+          - PruneLast=true
+        retry:
+          limit: 5
+          backoff:
+            duration: 5s
+            factor: 2
+            maxDuration: 3m

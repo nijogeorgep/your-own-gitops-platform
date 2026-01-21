@@ -1,0 +1,33 @@
+# Development environment overrides for nginx
+
+environment: dev
+region: us-east-1
+# flavor: ""  # Optional - omit for standard deployment
+
+replicaCount: 1
+
+image:
+  tag: "latest"
+
+resources:
+  limits:
+    cpu: 100m
+    memory: 128Mi
+  requests:
+    cpu: 50m
+    memory: 64Mi
+
+autoscaling:
+  enabled: false
+
+# Enable HTTPRoute for Istio Gateway integration
+httpRoute:
+  enabled: true
+  parentRefs:
+    - name: platform-gateway
+      namespace: istio-system
+  rules:
+    - matches:
+      - path:
+          type: PathPrefix
+          value: /nginx-dev

@@ -1,0 +1,51 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-resource-limits
+  labels:
+    policy.kyverno.io/severity: medium
+    policy.kyverno.io/category: resource-management
+  annotations:
+    policies.kyverno.io/title: Require Resource Limits
+    policies.kyverno.io/description: >-
+      Requires CPU and memory limits on all containers.
+      Prevents resource exhaustion and enables HPA to function correctly.
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+  - name: require-limits
+    match:
+      any:
+      - resources:
+          kinds:
+          - Deployment
+          - Rollout
+          - Pod
+    validate:
+      message: "CPU and memory limits are required for all containers"
+      pattern:
+        spec:
+          containers:
+          - resources:
+              limits:
+                cpu: "?*"
+                memory: "?*"
+  
+  - name: require-requests
+    match:
+      any:
+      - resources:
+          kinds:
+          - Deployment
+          - Rollout
+          - Pod
+    validate:
+      message: "CPU and memory requests are required for all containers"
+      pattern:
+        spec:
+          containers:
+          - resources:
+              requests:
+                cpu: "?*"
+                memory: "?*"

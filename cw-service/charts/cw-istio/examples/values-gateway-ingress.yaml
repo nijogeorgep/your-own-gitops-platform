@@ -1,0 +1,134 @@
+# Example: Istio with Custom Gateway (Ingress)
+# Create a dedicated Gateway for this service
+# File: services/myapp/values-prod.yaml
+
+# ================================================
+# STANDARD SERVICE CONFIGURATION
+# ================================================
+environment: prod
+region: us-east-1
+
+replicaCount: 3
+
+image:
+  repository: myregistry/myapp
+  pullPolicy: IfNotPresent
+  tag: "v1.0.0"
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+# ================================================
+# ISTIO WITH CUSTOM GATEWAY
+# ================================================
+cw-istio:
+  enabled: true
+  
+  # Create a dedicated Gateway for this service
+  gateway:
+    enabled: true
+    
+    annotations:
+      description: "Dedicated gateway for myapp"
+    
+    # Use Istio ingress gateway
+    selector:
+      istio: ingressgateway
+    
+    # Server configurations
+    servers:
+      # HTTP server (redirect to HTTPS)
+      - port:
+          number: 80
+          name: http
+          protocol: HTTP
+        hosts:
+          - "myapp.example.com"
+        tls:
+          httpsRedirect: true
+      
+      # HTTPS server
+      - port:
+          number: 443
+          name: https
+          protocol: HTTPS
+        hosts:
+          - "myapp.example.com"
+        tls:
+          mode: SIMPLE
+          credentialName: myapp-tls-cert  # Kubernetes Secret with TLS cert
+  
+  # VirtualService attached to custom Gateway
+  virtualService:
+    enabled: true
+    
+    hosts:
+      - "myapp.example.com"
+    
+    # Reference custom Gateway (uses chart naming)
+    gateways:
+      - "myapp-prod-us-east-1-gateway"
+    
+    http:
+      # API routes
+      - match:
+          - uri:
+              prefix: "/api"
+        route:
+          - destination:
+              port: 80
+        timeout: 30s
+      
+      # Static content
+      - match:
+          - uri:
+              prefix: "/static"
+        route:
+          - destination:
+              port: 80
+        timeout: 60s
+      
+      # Default route
+      - route:
+          - destination:
+              port: 80
+  
+  # DestinationRule for resilience
+  destinationRule:
+    enabled: true
+    trafficPolicy:
+      loadBalancer:
+        simple: LEAST_CONN
+      connectionPool:
+        tcp:
+          maxConnections: 100
+        http:
+          http1MaxPendingRequests: 50
+          http2MaxRequests: 100
+
+# ================================================
+# TLS CERTIFICATE SETUP
+# ================================================
+# Create Kubernetes Secret with TLS certificate:
+#
+# kubectl create secret tls myapp-tls-cert \
+#   --cert=path/to/tls.crt \
+#   --key=path/to/tls.key \
+#   -n prod
+#
+# Or use cert-manager Certificate resource:
+#
+# apiVersion: cert-manager.io/v1
+# kind: Certificate
+# metadata:
+#   name: myapp-tls-cert
+#   namespace: prod
+# spec:
+#   secretName: myapp-tls-cert
+#   issuerRef:
+#     name: letsencrypt-prod
+#     kind: ClusterIssuer
+#   dnsNames:
+#     - myapp.example.com

@@ -1,0 +1,19 @@
+apiVersion: kargo.akuity.io/v1alpha1
+kind: Warehouse
+metadata:
+  name: nginx
+  namespace: kargo-nginx
+spec:
+  # Watch for new container images in registry
+  subscriptions:
+  - image:
+      repoURL: your-registry.io/nginx
+      semverConstraint: ^1.0.0  # Adjust version constraint as needed
+      discoveryLimit: 10
+      platform: linux/amd64
+  
+  # Also watch Git repository for manual triggers
+  - git:
+      repoURL: https://github.com/YOUR_ORG/gitops-platform.git
+      branch: main
+

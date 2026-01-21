@@ -1,0 +1,43 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-rollout-analysis
+  labels:
+    policy.kyverno.io/severity: high
+    policy.kyverno.io/category: progressive-delivery
+  annotations:
+    policies.kyverno.io/title: Require Analysis Templates for Production Rollouts
+    policies.kyverno.io/description: >-
+      Production Rollouts must have at least one AnalysisTemplate configured
+      for automated health validation during progressive delivery.
+      Prevents deployments without automated validation.
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+  - name: require-analysis-in-prod
+    match:
+      any:
+      - resources:
+          kinds:
+          - argoproj.io/v1alpha1/Rollout
+          namespaces:
+          - prod
+    validate:
+      message: >-
+        Production Rollouts must have analysis templates configured.
+        Add spec.strategy.canary.analysis or spec.strategy.blueGreen.postPromotionAnalysis.
+        Configure via cw-rollout.rollout.strategy.canary.analysis.templates
+      anyPattern:
+      - spec:
+          strategy:
+            canary:
+              analysis:
+                templates:
+                - "?*"
+      - spec:
+          strategy:
+            blueGreen:
+              postPromotionAnalysis:
+                templates:
+                - "?*"

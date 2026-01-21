@@ -1,0 +1,64 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: validate-canary-steps
+  labels:
+    policy.kyverno.io/severity: medium
+    policy.kyverno.io/category: progressive-delivery
+  annotations:
+    policies.kyverno.io/title: Validate Canary Steps
+    policies.kyverno.io/description: >-
+      Ensures canary rollouts have proper pause durations between steps.
+      Prevents too-rapid deployments that don't allow time for metrics collection.
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+  - name: require-pause-between-steps
+    match:
+      any:
+      - resources:
+          kinds:
+          - argoproj.io/v1alpha1/Rollout
+          namespaces:
+          - prod
+    validate:
+      message: >-
+        Canary steps must include pause durations for metric collection.
+        Add pause: {duration: 5m} between weight increases.
+      foreach:
+      - list: "request.object.spec.strategy.canary.steps[]"
+        preconditions:
+          any:
+          - key: "{{ element.setWeight }}"
+            operator: Exists
+        deny:
+          conditions:
+            any:
+            - key: "{{ element.pause }}"
+              operator: NotExists
+  
+  - name: minimum-pause-duration-prod
+    match:
+      any:
+      - resources:
+          kinds:
+          - argoproj.io/v1alpha1/Rollout
+          namespaces:
+          - prod
+    validate:
+      message: >-
+        Production rollouts must have minimum 5-minute pause between steps.
+        Current pause is too short for proper metric analysis.
+      foreach:
+      - list: "request.object.spec.strategy.canary.steps[]"
+        preconditions:
+          any:
+          - key: "{{ element.pause.duration }}"
+            operator: Exists
+        deny:
+          conditions:
+            any:
+            - key: "{{ element.pause.duration }}"
+              operator: LessThan
+              value: "5m"

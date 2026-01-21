@@ -1,0 +1,39 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: prod-requires-rollouts
+  labels:
+    policy.kyverno.io/severity: high
+    policy.kyverno.io/category: progressive-delivery
+  annotations:
+    policies.kyverno.io/title: Production Requires Argo Rollouts
+    policies.kyverno.io/description: >-
+      Blocks standard Deployments in production namespace.
+      Production deployments must use Argo Rollouts for progressive delivery
+      with automated analysis and rollback capabilities.
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+  - name: disallow-deployments-in-prod
+    match:
+      any:
+      - resources:
+          kinds:
+          - Deployment
+          namespaces:
+          - prod
+    exclude:
+      any:
+      - resources:
+          namespaces:
+          - kube-system
+          - argocd
+          - istio-system
+          - kyverno
+    validate:
+      message: >-
+        Standard Deployments are not allowed in production.
+        Use Argo Rollout resources for progressive delivery.
+        Enable cw-rollout subchart with: cw-rollout.enabled: true
+      deny: {}

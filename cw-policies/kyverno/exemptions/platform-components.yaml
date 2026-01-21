@@ -1,0 +1,70 @@
+apiVersion: kyverno.io/v2beta1
+kind: PolicyException
+metadata:
+  name: platform-components
+  namespace: kyverno
+spec:
+  exceptions:
+  # Exempt ArgoCD components
+  - policyName: require-resource-limits
+    ruleNames:
+    - require-limits
+    - require-requests
+    match:
+      any:
+      - resources:
+          namespaces:
+          - argocd
+  
+  - policyName: require-probes
+    ruleNames:
+    - require-liveness-probe
+    - require-readiness-probe
+    match:
+      any:
+      - resources:
+          namespaces:
+          - argocd
+  
+  # Exempt Istio system components
+  - policyName: require-pod-security
+    ruleNames:
+    - require-non-root-user-prod
+    - disallow-privilege-escalation-prod
+    - require-drop-all-capabilities-prod
+    match:
+      any:
+      - resources:
+          namespaces:
+          - istio-system
+  
+  # Exempt Kyverno itself
+  - policyName: "*"
+    ruleNames:
+    - "*"
+    match:
+      any:
+      - resources:
+          namespaces:
+          - kyverno
+  
+  # Exempt cert-manager
+  - policyName: require-pod-security
+    ruleNames:
+    - require-non-root-user-prod
+    - require-read-only-root-filesystem-prod
+    match:
+      any:
+      - resources:
+          namespaces:
+          - cert-manager
+  
+  # Exempt Kargo namespaces from Deployment restrictions
+  - policyName: prod-requires-rollouts
+    ruleNames:
+    - disallow-deployments-in-prod
+    match:
+      any:
+      - resources:
+          namespaces:
+          - kargo-*

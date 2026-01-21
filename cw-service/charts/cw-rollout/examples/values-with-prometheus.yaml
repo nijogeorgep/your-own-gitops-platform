@@ -1,0 +1,169 @@
+# Example: Production deployment with Prometheus-based canary rollout
+# File: services/myapp/values-prod.yaml
+
+# ================================================
+# STANDARD SERVICE CONFIGURATION
+# ================================================
+environment: prod
+region: us-east-1
+# flavor: api  # Optional
+
+replicaCount: 3
+
+image:
+  repository: myregistry/myapp
+  pullPolicy: IfNotPresent
+  tag: "v1.2.3"  # Pinned version for prod
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 250m
+    memory: 256Mi
+
+livenessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /ready
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 5
+
+# ================================================
+# PROGRESSIVE DELIVERY WITH ARGO ROLLOUTS
+# ================================================
+cw-rollout:
+  enabled: true
+  
+  rollout:
+    strategy: canary
+    revisionHistoryLimit: 5
+    
+    canary:
+      # Gradual traffic progression
+      steps:
+        - setWeight: 10
+        - pause: {duration: 5m}
+        - analysis:
+            templates:
+              - templateName: prometheus-success-rate
+        
+        - setWeight: 25
+        - pause: {duration: 10m}
+        - analysis:
+            templates:
+              - templateName: prometheus-success-rate
+              - templateName: prometheus-error-rate
+        
+        - setWeight: 50
+        - pause: {duration: 15m}
+        - analysis:
+            templates:
+              - templateName: prometheus-success-rate
+              - templateName: prometheus-error-rate
+              - templateName: prometheus-latency-p95
+
+  # ================================================
+  # PROMETHEUS ANALYSIS TEMPLATES
+  # ================================================
+  analysisTemplates:
+    prometheus:
+      enabled: true
+      address: http://prometheus.monitoring:9090
+      
+      queries:
+        successRate:
+          enabled: true
+          # HTTP success rate (2xx responses / total requests)
+          query: |
+            sum(rate(
+              http_requests_total{job="myapp-prod-us-east-1",code=~"2.."}[5m]
+            )) /
+            sum(rate(
+              http_requests_total{job="myapp-prod-us-east-1"}[5m]
+            ))
+          threshold: 0.95  # Require 95% success rate
+          failureLimit: 2  # Fail after 2 consecutive failures
+          interval: 1m
+          count: 5  # Run 5 measurements
+        
+        errorRate:
+          enabled: true
+          # HTTP error rate (5xx responses / total requests)
+          query: |
+            sum(rate(
+              http_requests_total{job="myapp-prod-us-east-1",code=~"5.."}[5m]
+            )) /
+            sum(rate(
+              http_requests_total{job="myapp-prod-us-east-1"}[5m]
+            ))
+          threshold: 0.05  # Max 5% error rate
+          failureLimit: 2
+          interval: 1m
+          count: 5
+        
+        latency:
+          enabled: true
+          # P95 latency in milliseconds
+          query: |
+            histogram_quantile(0.95,
+              sum(rate(http_request_duration_seconds_bucket{job="myapp-prod-us-east-1"}[5m])) by (le)
+            ) * 1000
+          threshold: 500  # Max 500ms P95 latency
+          failureLimit: 2
+          interval: 1m
+          count: 5
+
+# ================================================
+# GATEWAY API HTTPROUTE (for traffic routing)
+# ================================================
+httpRoute:
+  enabled: true
+  parentRefs:
+    - name: gateway
+      namespace: istio-system
+      sectionName: http
+  
+  rules:
+    - matches:
+      - path:
+          type: PathPrefix
+          value: /api
+
+# ================================================
+# AUTOSCALING
+# ================================================
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+# ================================================
+# SECURITY
+# ================================================
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true

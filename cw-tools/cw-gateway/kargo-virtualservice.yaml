@@ -1,0 +1,29 @@
+# Kargo VirtualService - Expose Kargo UI at /kargo path
+
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: kargo-ui
+  namespace: kargo
+  labels:
+    app: kargo
+    component: ui
+spec:
+  hosts:
+  - "*"
+  gateways:
+  - istio-system/platform-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /kargo
+    route:
+    - destination:
+        host: kargo-api.kargo.svc.cluster.local
+        port:
+          number: 80
+      headers:
+        request:
+          set:
+            # Kargo API expects this header for path prefix
+            x-forwarded-prefix: /kargo

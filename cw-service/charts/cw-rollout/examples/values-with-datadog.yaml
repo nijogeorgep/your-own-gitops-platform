@@ -1,0 +1,124 @@
+# Example: Blue-green deployment with Datadog analysis
+# File: services/myapp/values-prod.yaml
+
+# ================================================
+# STANDARD SERVICE CONFIGURATION
+# ================================================
+environment: prod
+region: us-east-1
+
+replicaCount: 3
+
+image:
+  repository: myregistry/myapp
+  pullPolicy: IfNotPresent
+  tag: "v2.0.0"
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+resources:
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+  requests:
+    cpu: 500m
+    memory: 512Mi
+
+# ================================================
+# BLUE-GREEN DEPLOYMENT WITH ARGO ROLLOUTS
+# ================================================
+cw-rollout:
+  enabled: true
+  
+  rollout:
+    strategy: bluegreen
+    revisionHistoryLimit: 3
+    
+    blueGreen:
+      # Manual approval required for production
+      autoPromotionEnabled: false
+      
+      # Keep old version for 10 minutes after promotion
+      scaleDownDelaySeconds: 600
+      
+      # Validate new version before switching traffic
+      prePromotionAnalysis:
+        templates:
+          - templateName: datadog-health-check
+      
+      # Validate after traffic switch
+      postPromotionAnalysis:
+        templates:
+          - templateName: datadog-health-check
+
+  # ================================================
+  # DATADOG ANALYSIS TEMPLATES
+  # ================================================
+  analysisTemplates:
+    datadog:
+      enabled: true
+      
+      # Use Kubernetes Secret for credentials
+      apiKey:
+        secretName: datadog-credentials
+        secretKey: api-key
+      appKey:
+        secretName: datadog-credentials
+        secretKey: app-key
+      
+      address: https://api.datadoghq.com
+      
+      queries:
+        errorRate:
+          enabled: true
+          # Trace-based error rate
+          query: "avg:trace.http.request.errors{service:myapp,env:prod}.as_rate()"
+          threshold: 0.05  # Max 5% error rate
+          failureLimit: 3
+          interval: 1m
+          count: 10
+        
+        latency:
+          enabled: true
+          # Average request duration in milliseconds
+          query: "avg:trace.http.request.duration{service:myapp,env:prod}.rollup(avg, 60)"
+          threshold: 500  # Max 500ms average latency
+          failureLimit: 3
+          interval: 1m
+          count: 10
+
+# ================================================
+# ISTIO SERVICE MESH INTEGRATION
+# ================================================
+cw-istio:
+  enabled: true
+  
+  gateway:
+    enabled: true
+    hosts:
+      - myapp.example.com
+  
+  virtualService:
+    enabled: true
+    http:
+      - match:
+        - uri:
+            prefix: /
+        route:
+          - destination:
+              port:
+                number: 80
+
+# ================================================
+# MONITORING & ALERTS
+# ================================================
+# Note: Datadog Agent should be deployed as DaemonSet
+# with APM enabled for trace collection
+
+# Required Datadog tags on application:
+# - service: myapp
+# - env: prod
+# - version: {{ .Values.image.tag }}

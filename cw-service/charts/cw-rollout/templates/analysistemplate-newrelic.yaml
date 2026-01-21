@@ -1,0 +1,57 @@
+{{/*
+=============================================================================
+ANALYSIS TEMPLATE: New Relic Metrics
+=============================================================================
+Purpose: Monitor service health via New Relic during canary rollout
+Triggers: Automatic rollback based on New Relic NRQL queries
+*/}}
+{{- if and .Values.enabled .Values.analysisTemplates.newrelic.enabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: {{ include "cw-rollout.fullname" . }}-newrelic
+  labels:
+    {{- include "cw-rollout.labels" . | nindent 4 }}
+spec:
+  args:
+  - name: service-name
+    value: {{ include "cw-rollout.fullname" . }}
+  - name: account-id
+    value: "{{ .Values.analysisTemplates.newrelic.accountId }}"
+  - name: query-key
+    valueFrom:
+      secretKeyRef:
+        name: newrelic-credentials
+        key: query-key
+  
+  metrics:
+  - name: error-percentage
+    interval: 60s
+    count: 5
+    successCondition: result < 5
+    failureLimit: 3
+    provider:
+      newrelic:
+        accountID: "{{`{{args.account-id}}`}}"
+        queryKey: "{{`{{args.query-key}}`}}"
+        query: |
+          SELECT percentage(count(*), WHERE error IS true)
+          FROM Transaction
+          WHERE appName = '{{`{{args.service-name}}`}}'
+          SINCE 5 minutes ago
+  
+  - name: apdex-score
+    interval: 60s
+    count: 5
+    successCondition: result >= 0.9
+    failureLimit: 3
+    provider:
+      newrelic:
+        accountID: "{{`{{args.account-id}}`}}"
+        queryKey: "{{`{{args.query-key}}`}}"
+        query: |
+          SELECT apdex(duration)
+          FROM Transaction
+          WHERE appName = '{{`{{args.service-name}}`}}'
+          SINCE 5 minutes ago
+{{- end }}

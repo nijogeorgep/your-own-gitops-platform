@@ -1,0 +1,9 @@
+dependencies:
+- name: cw-common
+  repository: ""
+  version: 0.1.0
+- name: cw-istio
+  repository: ""
+  version: 0.1.0
+digest: sha256:ba6dfa556b4371279711a1c03569759721a274e8132c7e0cc7859f247991e9eb
+generated: "2026-01-20T10:41:06.1527525-08:00"

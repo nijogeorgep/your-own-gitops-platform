@@ -1,0 +1,129 @@
+# Example: Advanced Istio with Circuit Breaking and Load Balancing
+# File: services/myapp/values-prod.yaml
+
+# ================================================
+# STANDARD SERVICE CONFIGURATION
+# ================================================
+environment: prod
+region: us-east-1
+
+replicaCount: 5
+
+image:
+  repository: myregistry/myapp
+  pullPolicy: IfNotPresent
+  tag: "v2.1.0"
+
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8080
+
+# ================================================
+# ISTIO - ADVANCED TRAFFIC MANAGEMENT
+# ================================================
+cw-istio:
+  enabled: true
+  
+  # VirtualService with advanced routing
+  virtualService:
+    enabled: true
+    hosts:
+      - "myapp.example.com"
+    gateways:
+      - "istio-system/platform-gateway"
+    
+    http:
+      # API routes
+      - match:
+          - uri:
+              prefix: "/api/v1"
+          headers:
+            x-api-version:
+              exact: "v1"
+        route:
+          - destination:
+              port: 80
+            weight: 100
+        timeout: 30s
+        retries:
+          attempts: 3
+          perTryTimeout: 10s
+        # Add headers
+        headers:
+          request:
+            set:
+              x-service: "myapp"
+              x-environment: "prod"
+          response:
+            remove:
+              - x-internal-debug
+      
+      # Health check route (no timeout)
+      - match:
+          - uri:
+              exact: "/health"
+        route:
+          - destination:
+              port: 80
+        timeout: 5s
+  
+  # DestinationRule for resilience patterns
+  destinationRule:
+    enabled: true
+    
+    # Traffic policies
+    trafficPolicy:
+      # Load balancing strategy
+      loadBalancer:
+        consistentHash:
+          httpHeaderName: "x-user-id"  # Session affinity by user ID
+      
+      # Connection pool limits (circuit breaking)
+      connectionPool:
+        tcp:
+          maxConnections: 100
+          connectTimeout: 30ms
+        http:
+          http1MaxPendingRequests: 50
+          http2MaxRequests: 100
+          maxRequestsPerConnection: 2
+          idleTimeout: 300s
+      
+      # Outlier detection (ejecting unhealthy instances)
+      outlierDetection:
+        consecutiveErrors: 5        # Eject after 5 consecutive errors
+        interval: 30s              # Check every 30 seconds
+        baseEjectionTime: 30s      # Eject for at least 30 seconds
+        maxEjectionPercent: 50     # Max 50% of instances can be ejected
+        minHealthPercent: 30       # Keep at least 30% healthy
+    
+    # Optional: Define subsets for versioned routing
+    subsets:
+      - name: v1
+        labels:
+          version: v1
+      - name: v2
+        labels:
+          version: v2
+
+# ================================================
+# RESOURCES
+# ================================================
+resources:
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+  requests:
+    cpu: 500m
+    memory: 512Mi
+
+# ================================================
+# AUTOSCALING
+# ================================================
+autoscaling:
+  enabled: true
+  minReplicas: 5
+  maxReplicas: 20
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80

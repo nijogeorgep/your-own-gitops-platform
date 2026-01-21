@@ -1,0 +1,47 @@
+apiVersion: kyverno.io/v2beta1
+kind: PolicyException
+metadata:
+  name: development-exemptions
+  namespace: kyverno
+spec:
+  exceptions:
+  # Allow latest tag in dev environment
+  - policyName: disallow-latest-tag
+    ruleNames:
+    - "*"
+    match:
+      any:
+      - resources:
+          namespaces:
+          - dev
+  
+  # Relax security requirements in dev
+  - policyName: require-pod-security
+    ruleNames:
+    - require-non-root-user-prod
+    - require-read-only-root-filesystem-prod
+    match:
+      any:
+      - resources:
+          namespaces:
+          - dev
+  
+  # Allow standard Deployments in dev
+  - policyName: prod-requires-rollouts
+    ruleNames:
+    - disallow-deployments-in-prod
+    match:
+      any:
+      - resources:
+          namespaces:
+          - dev
+  
+  # Don't require analysis in dev
+  - policyName: require-rollout-analysis
+    ruleNames:
+    - require-analysis-in-prod
+    match:
+      any:
+      - resources:
+          namespaces:
+          - dev

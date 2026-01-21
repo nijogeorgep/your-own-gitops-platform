@@ -1,0 +1,204 @@
+{{/*
+=============================================================================
+KUBERNETES RESOURCE: Deployment
+=============================================================================
+Purpose: Manages application pods with ReplicaSet for scaling and rolling updates
+Naming: Uses cw-service.fullname for consistent resource naming
+Auto-scaling: Replica count managed by HPA when autoscaling.enabled=true
+
+Key Features:
+  - Multi-protocol support (HTTP/HTTPS/gRPC)
+  - Environment variable injection (env and envFrom)
+  - Health probes (liveness/readiness)
+  - Volume mounts and security contexts
+  - Pod scheduling (nodeSelector, affinity, tolerations)
+*/}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  {{/* Resource name follows platform naming standard */}}
+  name: {{ include "cw-service.fullname" . }}
+  labels:
+    {{/* Standard Kubernetes recommended labels */}}
+    {{- include "cw-service.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  {{/* Static replica count - disabled when HPA is active */}}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    {{/* Pod selector - MUST match template.metadata.labels */}}
+    matchLabels:
+      {{- include "cw-service.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      {{/* Custom annotations for pods (e.g., Prometheus scrape config) */}}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{/* Pod labels - includes selector labels + custom labels */}}
+        {{- include "cw-service.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      {{/* Secrets for pulling images from private registries */}}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{/* Service account for pod identity and RBAC */}}
+      serviceAccountName: {{ include "cw-service.serviceAccountName" . }}
+      {{- with .Values.podSecurityContext }}
+      {{/* Pod-level security settings (fsGroup, runAsUser, etc.) */}}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          {{- with .Values.securityContext }}
+          {{/* Container-level security context (capabilities, readOnlyRootFilesystem) */}}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{/* Container image with tag fallback to Chart.AppVersion */}}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{/*
+          =================================================================
+          PORT CONFIGURATION
+          =================================================================
+          Supports two modes:
+          1. Multiple ports: service.ports array (HTTP, HTTPS, gRPC)
+          2. Single port: service.port (backward compatible)
+          */}}
+          ports:
+            {{- if .Values.service.ports }}
+            {{/* Multi-port configuration - iterate through ports array */}}
+            {{- range .Values.service.ports }}
+            - name: {{ .name }}
+              containerPort: {{ .targetPort | default .port }}
+              protocol: {{ .protocol | default "TCP" }}
+            {{- end }}
+            {{- else }}
+            {{/* Single port mode - default HTTP on service.port */}}
+            - name: http
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+            {{- end }}
+          {{- with .Values.env }}
+          {{/*
+          =================================================================
+          ENVIRONMENT VARIABLES
+          =================================================================
+          Direct environment variable definitions
+          Supports:
+            - Static values
+            - ValueFrom (secretKeyRef, configMapKeyRef, fieldRef)
+          */}}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.envFrom }}
+          {{/*
+          =================================================================
+          ENVIRONMENT FROM SOURCES
+          =================================================================
+          Load all keys from ConfigMaps or Secrets as environment variables
+          Useful for bulk configuration injection
+          */}}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.livenessProbe }}
+          {{/*
+          =================================================================
+          LIVENESS PROBE
+          =================================================================
+          Determines if container should be restarted
+          Default: Spring Boot Actuator /actuator/health/liveness
+          Supports: httpGet, tcpSocket, exec, grpc
+          Failure = Pod restart
+          */}}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.readinessProbe }}
+          {{/*
+          =================================================================
+          READINESS PROBE
+          =================================================================
+          Determines if container can receive traffic
+          Default: Spring Boot Actuator /actuator/health/readiness
+          Supports: httpGet, tcpSocket, exec, grpc
+          Failure = Removed from Service endpoints
+          */}}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.resources }}
+          {{/*
+          =================================================================
+          RESOURCE LIMITS & REQUESTS
+          =================================================================
+          CPU and memory allocation
+          Requests: Guaranteed resources for scheduling
+          Limits: Maximum resources before throttling/OOM
+          Important: Set these in environment-specific values files
+          */}}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.volumeMounts }}
+          {{/* Mount volumes into container filesystem */}}
+          volumeMounts:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .Values.volumes }}
+      {{/*
+      ===================================================================
+      VOLUMES
+      ===================================================================
+      Pod-level volume definitions (ConfigMap, Secret, PVC, emptyDir, etc.)
+      Must have corresponding volumeMounts in container spec
+      */}}
+      volumes:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      {{/*
+      ===================================================================
+      NODE SELECTOR
+      ===================================================================
+      Schedule pods on nodes with matching labels
+      Example: disktype=ssd, environment=production
+      */}}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      {{/*
+      ===================================================================
+      AFFINITY RULES
+      ===================================================================
+      Advanced pod scheduling rules:
+        - Node affinity: Prefer/require specific nodes
+        - Pod affinity: Co-locate with other pods
+        - Pod anti-affinity: Spread across nodes/zones
+      */}}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      {{/*
+      ===================================================================
+      TOLERATIONS
+      ===================================================================
+      Allow pods to schedule on tainted nodes
+      Example: tolerate nodes with maintenance taint
+      */}}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

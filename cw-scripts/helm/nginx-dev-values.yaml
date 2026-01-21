@@ -1,0 +1,105 @@
+# Example deployment: Nginx web server in dev environment
+# Usage: helm install nginx ../../cw-service -f nginx-dev-values.yaml
+
+# Naming convention components
+nameOverride: "nginx"
+environment: "dev"
+region: "us-east-1"
+# flavor: ""  # Optional - omit for standard deployment
+
+# Deployment configuration
+replicaCount: 2
+
+image:
+  repository: nginx
+  pullPolicy: IfNotPresent
+  tag: "1.25-alpine"
+
+# Service configuration
+service:
+  type: ClusterIP
+  port: 80
+  # Multi-port example (commented out for simple HTTP)
+  # ports:
+  #   - name: http
+  #     port: 80
+  #     targetPort: 80
+  #     protocol: TCP
+
+# Health probes for nginx
+livenessProbe:
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 10
+
+readinessProbe:
+  httpGet:
+    path: /
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 5
+
+# Resource limits for dev environment
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# ServiceAccount (always created)
+serviceAccount:
+  automount: false  # Nginx doesn't need Kubernetes API access
+  annotations: {}
+
+# Autoscaling (disabled for dev)
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 80
+
+# Pod configuration
+podAnnotations:
+  prometheus.io/scrape: "false"
+
+podLabels:
+  app: nginx
+  tier: frontend
+
+# Security contexts
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 101  # nginx user
+  fsGroup: 101
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+
+# Volumes for nginx cache and runtime
+volumes:
+  - name: cache
+    emptyDir: {}
+  - name: run
+    emptyDir: {}
+
+volumeMounts:
+  - name: cache
+    mountPath: /var/cache/nginx
+  - name: run
+    mountPath: /var/run
+
+# Node affinity (commented - use for production)
+# nodeSelector:
+#   disktype: ssd
+
+# Istio integration (disabled for dev)
+cw-istio:
+  enabled: false

@@ -1,0 +1,52 @@
+{{/*
+=============================================================================
+ANALYSIS TEMPLATE: Datadog Metrics
+=============================================================================
+Purpose: Monitor service health via Datadog during canary rollout
+Triggers: Automatic rollback based on Datadog metrics
+*/}}
+{{- if and .Values.enabled .Values.analysisTemplates.datadog.enabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: {{ include "cw-rollout.fullname" . }}-datadog
+  labels:
+    {{- include "cw-rollout.labels" . | nindent 4 }}
+spec:
+  args:
+  - name: service-name
+    value: {{ include "cw-rollout.fullname" . }}
+  - name: api-key
+    valueFrom:
+      secretKeyRef:
+        name: datadog-credentials
+        key: api-key
+  - name: app-key
+    valueFrom:
+      secretKeyRef:
+        name: datadog-credentials
+        key: app-key
+  
+  metrics:
+  - name: error-rate
+    interval: 60s
+    count: 5
+    successCondition: result.series[0].pointlist[0][1] < 0.05
+    failureLimit: 3
+    provider:
+      datadog:
+        apiKey: "{{`{{args.api-key}}`}}"
+        appKey: "{{`{{args.app-key}}`}}"
+        query: "avg:trace.http.request.errors{service:{{`{{args.service-name}}`}}}"
+        
+  - name: latency-p99
+    interval: 60s
+    count: 5
+    successCondition: result.series[0].pointlist[0][1] < 500
+    failureLimit: 3
+    provider:
+      datadog:
+        apiKey: "{{`{{args.api-key}}`}}"
+        appKey: "{{`{{args.app-key}}`}}"
+        query: "p99:trace.http.request.duration{service:{{`{{args.service-name}}`}}}"
+{{- end }}

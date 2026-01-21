@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kargo-nginx
+  labels:
+    app.kubernetes.io/managed-by: kargo
+    app.kubernetes.io/service: nginx
+    kargo.akuity.io/project: "true"
+

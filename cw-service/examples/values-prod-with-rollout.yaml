@@ -1,0 +1,98 @@
+# Example: Enabling Argo Rollouts for Production Environment
+# Use this pattern in services/<your-service>/values-prod.yaml
+
+# Standard deployment configuration
+environment: prod
+region: us-east-1
+replicaCount: 3
+
+image:
+  repository: your-registry.io/myapp
+  tag: "v1.2.3"  # Pin production versions
+
+# Enable Argo Rollout for progressive delivery
+cw-rollout:
+  enabled: true
+  
+  rollout:
+    strategy: canary
+    revisionHistoryLimit: 5  # Keep more history for prod rollbacks
+    
+    canary:
+      # Conservative rollout for production (30+ minutes total)
+      steps:
+        - setWeight: 10    # Send 10% traffic to new version
+        - pause: 
+            duration: 10m  # Monitor for 10 minutes
+        
+        - setWeight: 25    # Increase to 25%
+        - pause:
+            duration: 10m
+        
+        - setWeight: 50    # Half traffic
+        - pause:
+            duration: 15m  # Longer pause at 50%
+        
+        - setWeight: 75    # Most traffic
+        - pause:
+            duration: 10m
+        
+        # Final step promotes to 100% automatically
+      
+      # Safe rollout settings
+      maxSurge: 1          # Only 1 extra pod during rollout
+      maxUnavailable: 0    # Zero downtime
+  
+  # Example: Automated analysis with Prometheus
+  # analysisTemplates:
+  #   prometheus:
+  #     enabled: true
+  #     address: http://prometheus.monitoring:9090
+  #     queries:
+  #       successRate:
+  #         enabled: true
+  #         query: |
+  #           sum(rate(http_requests_total{job="myapp-prod-us-east-1",code=~"2.."}[5m])) /
+  #           sum(rate(http_requests_total{job="myapp-prod-us-east-1"}[5m]))
+  #         threshold: 0.95
+
+# Autoscaling with Rollout
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+# Enable HTTPRoute for traffic splitting
+httpRoute:
+  enabled: true
+  parentRefs:
+    - name: platform-gateway
+      namespace: istio-system
+  rules:
+    - matches:
+      - path:
+          type: PathPrefix
+          value: /myapp
+
+# Production security
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+
+# Resource limits
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 250m
+    memory: 256Mi
